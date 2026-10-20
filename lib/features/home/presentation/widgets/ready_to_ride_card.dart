@@ -73,9 +73,11 @@ class ReadyToRideCard extends StatelessWidget {
                 const SizedBox(height: 8.0),
 
                 Text(
-                  'Asistencia de ruta visual diseñada para acompañarte en cada kilómetro de carretera.',
+                  'TU RUMBO. TU HISTORIA.\nDiseñada para acompañarte en cada kilómetro de carretera.',
                   style: TextStyle(
-                    fontSize: 14.0,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
                     color: isDark
                         ? AppColors.secondaryTextDark
                         : AppColors.secondaryTextLight,

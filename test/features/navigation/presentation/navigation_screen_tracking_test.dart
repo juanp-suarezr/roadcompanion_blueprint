@@ -145,19 +145,23 @@ void main() {
       expect(find.text('Reanudar'), findsOneWidget);
 
       // 4. Finalizar el seguimiento (diálogo de confirmación)
-      await tester.tap(find.descendant(
-        of: find.byType(GpxLiveTrackingPanel),
-        matching: find.text('Finalizar'),
-      ));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(GpxLiveTrackingPanel),
+          matching: find.text('Finalizar'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('¿Finalizar sesión de seguimiento?'), findsOneWidget);
 
       // Confirmar en el diálogo
-      await tester.tap(find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.text('Finalizar'),
-      ));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Finalizar'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       // Debe emerger el diálogo de resumen de la sesión

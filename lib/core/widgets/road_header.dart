@@ -25,10 +25,7 @@ class RoadHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Emblema oficial de ESTELA (flecha aerodinámica ascendente y órbita)
-          const EstelaLogo(
-            size: 42.0,
-            variant: EstelaLogoVariant.emblem,
-          ),
+          const EstelaLogo(size: 42.0, variant: EstelaLogoVariant.emblem),
           const SizedBox(width: 14.0),
 
           // Título y descriptor de ESTELA

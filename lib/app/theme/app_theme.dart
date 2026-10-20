@@ -102,7 +102,10 @@ abstract class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.0),
-          borderSide: const BorderSide(color: AppColors.electricBlue, width: 2.0),
+          borderSide: const BorderSide(
+            color: AppColors.electricBlue,
+            width: 2.0,
+          ),
         ),
         labelStyle: const TextStyle(color: AppColors.secondaryTextLight),
       ),
@@ -209,7 +212,10 @@ abstract class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.0),
-          borderSide: const BorderSide(color: AppColors.cyanLuminous, width: 2.0),
+          borderSide: const BorderSide(
+            color: AppColors.cyanLuminous,
+            width: 2.0,
+          ),
         ),
         labelStyle: const TextStyle(color: AppColors.secondaryText),
       ),

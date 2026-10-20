@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/state/app_settings_state.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_typography.dart';
+import '../../../core/widgets/estela_logo.dart';
 import '../../../core/widgets/storm_badge.dart';
 
 /// Pantalla de Ajustes de Road Companion.
@@ -332,33 +333,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 44.0,
-                          height: 44.0,
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? AppColors.stormNavy
-                                : AppColors.deepBlue,
-                            borderRadius: BorderRadius.circular(12.0),
-                          ),
-                          child: Icon(
-                            Icons.two_wheeler,
-                            color: isDark ? AppColors.accentBlue : Colors.white,
-                          ),
+                        const EstelaLogo(
+                          size: 44.0,
+                          variant: EstelaLogoVariant.emblem,
                         ),
                         const SizedBox(width: 14.0),
                         const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Road Companion',
+                              'ESTELA',
                               style: TextStyle(
-                                fontSize: 16.0,
-                                fontWeight: FontWeight.w800,
+                                fontSize: 17.0,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.5,
                               ),
                             ),
                             Text(
-                              'Versión 0.1.0 • StormBlue Edition',
+                              'Versión 0.1.0 • Navegador complementario',
                               style: TextStyle(
                                 fontSize: 12.0,
                                 color: AppColors.secondaryTextLight,
@@ -371,7 +363,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 14.0),
                     Text(
-                      'Diseñado para acompañarte en cada ruta. Una aplicación abierta, confiable y sobria pensada por y para motociclistas.',
+                      'TU RUMBO. TU HISTORIA.\nDiseñada para acompañarte en cada kilómetro de carretera. Una aplicación sobria, elegante y confiable pensada por y para motociclistas.',
                       style: TextStyle(
                         fontSize: 13.0,
                         color: isDark

@@ -5,7 +5,7 @@ import 'theme/app_theme.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/navigation/presentation/state/imported_route_state.dart';
 
-/// Aplicación raíz de Road Companion.
+/// Aplicación raíz de ESTELA — Navegador de ruta complementario.
 ///
 /// Configura el tema dinámico (Sistema / Claro / Oscuro), el estado de rutas
 /// importadas en memoria y monta la pantalla principal [HomeScreen].
@@ -18,6 +18,9 @@ class RoadCompanionApp extends StatefulWidget {
   @override
   State<RoadCompanionApp> createState() => _RoadCompanionAppState();
 }
+
+/// Alias para la clase de aplicación con el nuevo nombre oficial de marca.
+typedef EstelaApp = RoadCompanionApp;
 
 class _RoadCompanionAppState extends State<RoadCompanionApp> {
   late final ImportedRouteState _routeState;
@@ -46,7 +49,7 @@ class _RoadCompanionAppState extends State<RoadCompanionApp> {
           listenable: widget.settings,
           builder: (context, _) {
             return MaterialApp(
-              title: 'Road Companion',
+              title: 'ESTELA',
               debugShowCheckedModeBanner: false,
               themeMode: widget.settings.themeMode,
               theme: AppTheme.lightTheme,

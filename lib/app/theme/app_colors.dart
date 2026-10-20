@@ -35,7 +35,8 @@ abstract class AppColors {
 
   /// Texto secundario (#AABAC9) — Subtítulos, metadatos y unidades.
   static const Color secondaryText = Color(0xFFAABAC9);
-  static const Color secondaryTextDark = secondaryText; // alias de compatibilidad
+  static const Color secondaryTextDark =
+      secondaryText; // alias de compatibilidad
 
   /// Plata / Metal (#C8D0D8) — Acentos sutiles y divisores.
   static const Color silver = Color(0xFFC8D0D8);

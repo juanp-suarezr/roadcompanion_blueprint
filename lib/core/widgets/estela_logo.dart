@@ -74,8 +74,11 @@ class EstelaLogo extends StatelessWidget {
                     fontSize: size * 0.42,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 2.0,
-                    color: customColor ??
-                        (isDark ? AppColors.coldWhite : AppColors.primaryTextLight),
+                    color:
+                        customColor ??
+                        (isDark
+                            ? AppColors.coldWhite
+                            : AppColors.primaryTextLight),
                     height: 1.0,
                   ),
                 ),
@@ -112,7 +115,8 @@ class EstelaLogo extends StatelessWidget {
                 fontSize: 28.0,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 4.5,
-                color: customColor ??
+                color:
+                    customColor ??
                     (isDark ? AppColors.coldWhite : AppColors.primaryTextLight),
               ),
             ),

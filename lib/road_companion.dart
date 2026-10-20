@@ -33,3 +33,4 @@ export 'app/state/app_settings_state.dart';
 export 'app/theme/app_colors.dart';
 export 'app/theme/app_theme.dart';
 export 'app/theme/app_typography.dart';
+export 'core/widgets/estela_logo.dart';

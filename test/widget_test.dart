@@ -39,9 +39,9 @@ void main() {
     (WidgetTester tester) async {
       await pumpApp(tester);
 
-      // Verificación de elementos clave de la identidad Road Companion
-      expect(find.text('Road Companion'), findsWidgets);
-      expect(find.text('BUILT FOR THE RIDE.'), findsOneWidget);
+      // Verificación de elementos clave de la identidad ESTELA
+      expect(find.text('ESTELA'), findsWidgets);
+      expect(find.text('NAVEGADOR DE RUTA COMPLEMENTARIO'), findsOneWidget);
       expect(find.text('LISTO PARA RODAR'), findsOneWidget);
       expect(find.text('Explorar navegación'), findsOneWidget);
       expect(find.text('Pantalla externa: '), findsOneWidget);
