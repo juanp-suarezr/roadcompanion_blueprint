@@ -1,0 +1,10 @@
+name: road_companion
+description: Copiloto de navegación modular para motociclistas - Núcleo de dominio puro.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dev_dependencies:
+  test: ^1.24.0
