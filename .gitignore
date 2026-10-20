@@ -1,28 +1,12 @@
 
-# ==========================================
-# Road Companion - Git ignore
-# ==========================================
-
-# Flutter / Dart generado
+# Dart / Flutter: archivos generados
 .dart_tool/
 .packages
 .pub/
-.pub-cache/
 build/
 coverage/
-*.lcov
-lcov.info
 
-# Configuración local del editor
-.idea/
-.vscode/
-*.iml
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
-
-# Variables de entorno y secretos
+# Secretos y configuración local
 .env
 .env.*
 !.env.example
@@ -33,44 +17,19 @@ Thumbs.db
 *.pfx
 *.jks
 *.keystore
+local.properties
+android/key.properties
 secrets/
 private_keys/
 credentials.json
 service-account*.json
 
-# Configuración local no compartible
-*.local
-local.properties
-android/key.properties
-
-# Logs y archivos temporales
-*.log
-*.tmp
-*.temp
-*.bak
-
-# Datos personales y pruebas locales
-*.db
-*.sqlite
-*.sqlite3
-test_data/private/
-test_data/personal/
-
-# Documentación interna / sensible
-docs/internal/
-docs/private/
-docs/research/
-docs/prompts/
-*_INTERNAL.md
-*_PRIVATE.md
-*_CONFIDENTIAL.md
-
-# Documentos internos de planificación (si están en la raíz)
-PRODUCT_VISION.md
-ARCHITECTURE.md
-RESEARCH.md
-MAP_ROUTING_EVALUATION.md
+# Documentación interna: conservar localmente
 ACCESSIBILITY.md
-TEST_STRATEGY.md
-AI_DEV_RULES.md
+AI_DEVELOPMENT_RULES.md
+ARCHITECTURE.md
+MAP_ROUTING_EVALUATION.md
+PRODUCT_VISION.md
 PROMPT_PACK.md
+TECHNICAL_RESEARCH.md
+TEST_STRATEGY.md
