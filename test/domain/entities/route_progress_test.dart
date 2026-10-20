@@ -59,11 +59,13 @@ void main() {
           distanceToRouteMeters: 0.0,
           closestSegmentIndex: 0,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'distanceTraveledMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'distanceTraveledMeters',
+          ),
+        ),
       );
 
       expect(
@@ -75,11 +77,13 @@ void main() {
           distanceToRouteMeters: 0.0,
           closestSegmentIndex: 0,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'remainingDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'remainingDistanceMeters',
+          ),
+        ),
       );
 
       expect(
@@ -91,11 +95,13 @@ void main() {
           distanceToRouteMeters: 0.0,
           closestSegmentIndex: 0,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'progressPercentage',
+          ),
+        ),
       );
 
       expect(
@@ -107,11 +113,13 @@ void main() {
           distanceToRouteMeters: 0.0,
           closestSegmentIndex: 0,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'progressPercentage',
+          ),
+        ),
       );
 
       expect(
@@ -123,11 +131,13 @@ void main() {
           distanceToRouteMeters: -5.0,
           closestSegmentIndex: 0,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'distanceToRouteMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'distanceToRouteMeters',
+          ),
+        ),
       );
 
       expect(
@@ -139,11 +149,13 @@ void main() {
           distanceToRouteMeters: 0.0,
           closestSegmentIndex: -1,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'closestSegmentIndex',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'closestSegmentIndex',
+          ),
+        ),
       );
     });
 
@@ -151,7 +163,7 @@ void main() {
       final nonFiniteValues = [
         double.nan,
         double.infinity,
-        double.negativeInfinity
+        double.negativeInfinity,
       ];
 
       for (final val in nonFiniteValues) {
@@ -206,53 +218,58 @@ void main() {
     });
 
     test(
-        'rechaza trayecto de distancia total cero si el progreso no es 100.0 %',
-        () {
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 0.0,
-          remainingDistanceMeters: 0.0,
-          progressPercentage: 0.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 0,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
+      'rechaza trayecto de distancia total cero si el progreso no es 100.0 %',
+      () {
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 0.0,
+            remainingDistanceMeters: 0.0,
+            progressPercentage: 0.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 0,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
 
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 0.0,
-          remainingDistanceMeters: 0.0,
-          progressPercentage: 50.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 0,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 0.0,
+            remainingDistanceMeters: 0.0,
+            progressPercentage: 50.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 0,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
 
-      // Progreso 100.0 % en distancia total cero es válido
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 0.0,
-          remainingDistanceMeters: 0.0,
-          progressPercentage: 100.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 0,
-        ),
-        returnsNormally,
-      );
-    });
+        // Progreso 100.0 % en distancia total cero es válido
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 0.0,
+            remainingDistanceMeters: 0.0,
+            progressPercentage: 100.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 0,
+          ),
+          returnsNormally,
+        );
+      },
+    );
 
     test('rechaza suma acumulada de distancias no finita', () {
       expect(
@@ -269,24 +286,24 @@ void main() {
     });
 
     test(
-        'acepta índices de segmento positivos sin acoplarse ni requerir conocer la geometría',
-        () {
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 500.0,
-          remainingDistanceMeters: 500.0,
-          progressPercentage: 50.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 1.0,
-          closestSegmentIndex: 12500,
-        ),
-        returnsNormally,
-      );
-    });
+      'acepta índices de segmento positivos sin acoplarse ni requerir conocer la geometría',
+      () {
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 500.0,
+            remainingDistanceMeters: 500.0,
+            progressPercentage: 50.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 1.0,
+            closestSegmentIndex: 12500,
+          ),
+          returnsNormally,
+        );
+      },
+    );
   });
 
-  group('RouteProgress - Coherencia categórica entre distancias y porcentaje',
-      () {
+  group('RouteProgress - Coherencia categórica entre distancias y porcentaje', () {
     test('acepta combinaciones coherentes válidas', () {
       // 1. Inicio: recorrida 0, restante positiva, progreso 0%
       expect(
@@ -365,114 +382,130 @@ void main() {
       );
     });
 
-    test('rechaza combinaciones incoherentes de inicio con progreso positivo',
-        () {
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 0.0,
-          remainingDistanceMeters: 5000.0,
-          progressPercentage: 0.1,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 0,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
+    test(
+      'rechaza combinaciones incoherentes de inicio con progreso positivo',
+      () {
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 0.0,
+            remainingDistanceMeters: 5000.0,
+            progressPercentage: 0.1,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 0,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
 
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 0.0,
-          remainingDistanceMeters: 5000.0,
-          progressPercentage: 100.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 0,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
-    });
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 0.0,
+            remainingDistanceMeters: 5000.0,
+            progressPercentage: 100.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 0,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
+      },
+    );
 
     test(
-        'rechaza combinaciones incoherentes de arribo (restante 0) con progreso menor a 100%',
-        () {
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 5000.0,
-          remainingDistanceMeters: 0.0,
-          progressPercentage: 99.9,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 3,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
+      'rechaza combinaciones incoherentes de arribo (restante 0) con progreso menor a 100%',
+      () {
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 5000.0,
+            remainingDistanceMeters: 0.0,
+            progressPercentage: 99.9,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 3,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
 
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 5000.0,
-          remainingDistanceMeters: 0.0,
-          progressPercentage: 0.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 0.0,
-          closestSegmentIndex: 3,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
-    });
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 5000.0,
+            remainingDistanceMeters: 0.0,
+            progressPercentage: 0.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 0.0,
+            closestSegmentIndex: 3,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
+      },
+    );
 
     test(
-        'rechaza combinaciones en curso (ambas distancias positivas) con progreso 0% o 100%',
-        () {
-      // Avance positivo no puede reportar 0%
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 500.0,
-          remainingDistanceMeters: 500.0,
-          progressPercentage: 0.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 1.0,
-          closestSegmentIndex: 1,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
+      'rechaza combinaciones en curso (ambas distancias positivas) con progreso 0% o 100%',
+      () {
+        // Avance positivo no puede reportar 0%
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 500.0,
+            remainingDistanceMeters: 500.0,
+            progressPercentage: 0.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 1.0,
+            closestSegmentIndex: 1,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
 
-      // Distancia restante positiva no puede reportar 100%
-      expect(
-        () => RouteProgress(
-          distanceTraveledMeters: 500.0,
-          remainingDistanceMeters: 500.0,
-          progressPercentage: 100.0,
-          projectedPoint: coord,
-          distanceToRouteMeters: 1.0,
-          closestSegmentIndex: 1,
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'progressPercentage',
-        )),
-      );
-    });
+        // Distancia restante positiva no puede reportar 100%
+        expect(
+          () => RouteProgress(
+            distanceTraveledMeters: 500.0,
+            remainingDistanceMeters: 500.0,
+            progressPercentage: 100.0,
+            projectedPoint: coord,
+            distanceToRouteMeters: 1.0,
+            closestSegmentIndex: 1,
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'progressPercentage',
+            ),
+          ),
+        );
+      },
+    );
   });
 
   group('RouteProgress - Igualdad estructural y representación', () {

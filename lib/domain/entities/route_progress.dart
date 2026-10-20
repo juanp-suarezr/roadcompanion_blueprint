@@ -169,13 +169,13 @@ class RouteProgress {
 
   @override
   int get hashCode => Object.hash(
-        distanceTraveledMeters,
-        remainingDistanceMeters,
-        progressPercentage,
-        projectedPoint,
-        distanceToRouteMeters,
-        closestSegmentIndex,
-      );
+    distanceTraveledMeters,
+    remainingDistanceMeters,
+    progressPercentage,
+    projectedPoint,
+    distanceToRouteMeters,
+    closestSegmentIndex,
+  );
 
   @override
   String toString() =>

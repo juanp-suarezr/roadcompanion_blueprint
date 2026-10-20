@@ -58,7 +58,8 @@ class Coordinates {
     final double sinDeltaLat = sin(deltaLatRad / 2.0);
     final double sinDeltaLon = sin(deltaLonRad / 2.0);
 
-    final double a = sinDeltaLat * sinDeltaLat +
+    final double a =
+        sinDeltaLat * sinDeltaLat +
         cos(lat1Rad) * cos(lat2Rad) * sinDeltaLon * sinDeltaLon;
 
     final double clampedA = a.clamp(0.0, 1.0);

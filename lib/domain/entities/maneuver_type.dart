@@ -22,8 +22,11 @@ enum ManeuverType {
   static ManeuverType fromString(String? value) {
     if (value == null) return ManeuverType.unknown;
 
-    final normalized =
-        value.trim().toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
+    final normalized = value
+        .trim()
+        .toLowerCase()
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_');
 
     switch (normalized) {
       case 'straight':

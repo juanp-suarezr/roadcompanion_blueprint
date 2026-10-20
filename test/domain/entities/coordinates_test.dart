@@ -20,95 +20,65 @@ void main() {
     test('rechaza latitud superior a 90 grados', () {
       expect(
         () => Coordinates(90.0001, -75.0),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'latitude',
-        )),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'latitude')),
       );
     });
 
     test('rechaza latitud inferior a -90 grados', () {
       expect(
         () => Coordinates(-90.1, -75.0),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'latitude',
-        )),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'latitude')),
       );
     });
 
     test('rechaza longitud superior a 180 grados', () {
       expect(
         () => Coordinates(4.0, 180.01),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'longitude',
-        )),
+        throwsA(
+          isA<ArgumentError>().having((e) => e.name, 'name', 'longitude'),
+        ),
       );
     });
 
     test('rechaza longitud inferior a -180 grados', () {
       expect(
         () => Coordinates(4.0, -180.05),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'longitude',
-        )),
+        throwsA(
+          isA<ArgumentError>().having((e) => e.name, 'name', 'longitude'),
+        ),
       );
     });
 
     test('rechaza valores no finitos (NaN, Infinity, -Infinity)', () {
       expect(
         () => Coordinates(double.nan, -75.0),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'latitude',
-        )),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'latitude')),
       );
       expect(
         () => Coordinates(4.0, double.nan),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'longitude',
-        )),
+        throwsA(
+          isA<ArgumentError>().having((e) => e.name, 'name', 'longitude'),
+        ),
       );
       expect(
         () => Coordinates(double.infinity, 0.0),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'latitude',
-        )),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'latitude')),
       );
       expect(
         () => Coordinates(double.negativeInfinity, 0.0),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'latitude',
-        )),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'latitude')),
       );
       expect(
         () => Coordinates(0.0, double.infinity),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'longitude',
-        )),
+        throwsA(
+          isA<ArgumentError>().having((e) => e.name, 'name', 'longitude'),
+        ),
       );
       expect(
         () => Coordinates(0.0, double.negativeInfinity),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'longitude',
-        )),
+        throwsA(
+          isA<ArgumentError>().having((e) => e.name, 'name', 'longitude'),
+        ),
       );
     });
   });
@@ -135,21 +105,24 @@ void main() {
       expect(a.distanceTo(b), closeTo(b.distanceTo(a), 0.0001));
     });
 
-    test('distancia en el antimeridiano (180° y -180° sobre el mismo paralelo)',
-        () {
-      final east = Coordinates(0.0, 180.0);
-      final west = Coordinates(0.0, -180.0);
-      // Representan el mismo meridiano exacto opuesto a Greenwich
-      expect(east.distanceTo(west), closeTo(0.0, 0.001));
-    });
+    test(
+      'distancia en el antimeridiano (180° y -180° sobre el mismo paralelo)',
+      () {
+        final east = Coordinates(0.0, 180.0);
+        final west = Coordinates(0.0, -180.0);
+        // Representan el mismo meridiano exacto opuesto a Greenwich
+        expect(east.distanceTo(west), closeTo(0.0, 0.001));
+      },
+    );
 
     test(
-        'distancia entre polos norte y sur es media circunferencia terrestre (~20.015 km)',
-        () {
-      final northPole = Coordinates(90.0, 0.0);
-      final southPole = Coordinates(-90.0, 0.0);
-      expect(northPole.distanceTo(southPole), closeTo(20015086, 1000));
-    });
+      'distancia entre polos norte y sur es media circunferencia terrestre (~20.015 km)',
+      () {
+        final northPole = Coordinates(90.0, 0.0);
+        final southPole = Coordinates(-90.0, 0.0);
+        expect(northPole.distanceTo(southPole), closeTo(20015086, 1000));
+      },
+    );
 
     test('distancia entre puntos antipodales en el ecuador (~20.015 km)', () {
       final p1 = Coordinates(0.0, 0.0);
@@ -166,13 +139,15 @@ void main() {
       expect(c1.hashCode, equals(c2.hashCode));
     });
 
-    test('trata 0.0 y -0.0 como coordenadas equivalentes en rango e igualdad',
-        () {
-      final cPositiveZero = Coordinates(0.0, 0.0);
-      final cNegativeZero = Coordinates(-0.0, -0.0);
-      expect(cPositiveZero, equals(cNegativeZero));
-      expect(cPositiveZero.distanceTo(cNegativeZero), equals(0.0));
-    });
+    test(
+      'trata 0.0 y -0.0 como coordenadas equivalentes en rango e igualdad',
+      () {
+        final cPositiveZero = Coordinates(0.0, 0.0);
+        final cNegativeZero = Coordinates(-0.0, -0.0);
+        expect(cPositiveZero, equals(cNegativeZero));
+        expect(cPositiveZero.distanceTo(cNegativeZero), equals(0.0));
+      },
+    );
 
     test('coordenadas con valores distintos no son iguales', () {
       final c1 = Coordinates(4.8133, -75.6961);

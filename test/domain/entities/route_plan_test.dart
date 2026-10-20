@@ -49,22 +49,23 @@ void main() {
     });
 
     test(
-        'acepta distancia total 0.0 m con duración Duration.zero (origen == destino)',
-        () {
-      final zeroPlan = RoutePlan(
-        origin: origin,
-        destination: origin,
-        maneuvers: [step3],
-        geometry: [origin],
-        totalDistanceMeters: 0.0,
-        estimatedDuration: Duration.zero,
-        remainingDistanceMeters: 0.0,
-      );
+      'acepta distancia total 0.0 m con duración Duration.zero (origen == destino)',
+      () {
+        final zeroPlan = RoutePlan(
+          origin: origin,
+          destination: origin,
+          maneuvers: [step3],
+          geometry: [origin],
+          totalDistanceMeters: 0.0,
+          estimatedDuration: Duration.zero,
+          remainingDistanceMeters: 0.0,
+        );
 
-      expect(zeroPlan.totalDistanceMeters, equals(0.0));
-      expect(zeroPlan.estimatedDuration, equals(Duration.zero));
-      expect(zeroPlan.remainingDistanceMeters, equals(0.0));
-    });
+        expect(zeroPlan.totalDistanceMeters, equals(0.0));
+        expect(zeroPlan.estimatedDuration, equals(Duration.zero));
+        expect(zeroPlan.remainingDistanceMeters, equals(0.0));
+      },
+    );
 
     test('acepta distancia restante igual a 0.0 m (arribo a destino)', () {
       final plan = RoutePlan(
@@ -80,19 +81,20 @@ void main() {
     });
 
     test(
-        'acepta distancia restante igual exactamente a totalDistanceMeters (inicio del viaje)',
-        () {
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1],
-        totalDistanceMeters: 12500.0,
-        estimatedDuration: const Duration(minutes: 18),
-        remainingDistanceMeters: 12500.0,
-      );
+      'acepta distancia restante igual exactamente a totalDistanceMeters (inicio del viaje)',
+      () {
+        final plan = RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: [step1],
+          totalDistanceMeters: 12500.0,
+          estimatedDuration: const Duration(minutes: 18),
+          remainingDistanceMeters: 12500.0,
+        );
 
-      expect(plan.remainingDistanceMeters, equals(12500.0));
-    });
+        expect(plan.remainingDistanceMeters, equals(12500.0));
+      },
+    );
 
     test('rechaza distancia total negativa', () {
       expect(
@@ -103,11 +105,13 @@ void main() {
           totalDistanceMeters: -0.01,
           estimatedDuration: const Duration(minutes: 10),
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'totalDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'totalDistanceMeters',
+          ),
+        ),
       );
     });
 
@@ -120,11 +124,13 @@ void main() {
           totalDistanceMeters: double.nan,
           estimatedDuration: const Duration(minutes: 10),
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'totalDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'totalDistanceMeters',
+          ),
+        ),
       );
 
       expect(
@@ -135,11 +141,13 @@ void main() {
           totalDistanceMeters: double.infinity,
           estimatedDuration: const Duration(minutes: 10),
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'totalDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'totalDistanceMeters',
+          ),
+        ),
       );
 
       expect(
@@ -150,11 +158,13 @@ void main() {
           totalDistanceMeters: double.negativeInfinity,
           estimatedDuration: const Duration(minutes: 10),
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'totalDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'totalDistanceMeters',
+          ),
+        ),
       );
     });
 
@@ -167,11 +177,13 @@ void main() {
           totalDistanceMeters: 1000.0,
           estimatedDuration: const Duration(milliseconds: -1),
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'estimatedDuration',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'estimatedDuration',
+          ),
+        ),
       );
     });
 
@@ -185,11 +197,13 @@ void main() {
           estimatedDuration: const Duration(minutes: 10),
           remainingDistanceMeters: -0.1,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'remainingDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'remainingDistanceMeters',
+          ),
+        ),
       );
     });
 
@@ -203,11 +217,13 @@ void main() {
           estimatedDuration: const Duration(minutes: 10),
           remainingDistanceMeters: double.nan,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'remainingDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'remainingDistanceMeters',
+          ),
+        ),
       );
 
       expect(
@@ -219,332 +235,367 @@ void main() {
           estimatedDuration: const Duration(minutes: 10),
           remainingDistanceMeters: double.infinity,
         ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'remainingDistanceMeters',
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.name,
+            'name',
+            'remainingDistanceMeters',
+          ),
+        ),
       );
     });
 
-    test('rechaza distancia restante mayor a la distancia total por carretera',
-        () {
-      expect(
-        () => RoutePlan(
-          origin: origin,
-          destination: destination,
-          maneuvers: [step1],
-          totalDistanceMeters: 10000.0,
-          estimatedDuration: const Duration(minutes: 15),
-          remainingDistanceMeters: 10005.0, // Supera por 5 metros
-        ),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.name,
-          'name',
-          'remainingDistanceMeters',
-        )),
-      );
-    });
+    test(
+      'rechaza distancia restante mayor a la distancia total por carretera',
+      () {
+        expect(
+          () => RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1],
+            totalDistanceMeters: 10000.0,
+            estimatedDuration: const Duration(minutes: 15),
+            remainingDistanceMeters: 10005.0, // Supera por 5 metros
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.name,
+              'name',
+              'remainingDistanceMeters',
+            ),
+          ),
+        );
+      },
+    );
   });
 
   group('RoutePlan - Inmutabilidad estricta de colecciones', () {
-    test('las listas maneuvers y geometry no pueden modificarse externamente',
-        () {
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2],
-        geometry: [origin, destination],
-        totalDistanceMeters: 40000.0,
-        estimatedDuration: const Duration(minutes: 45),
-      );
+    test(
+      'las listas maneuvers y geometry no pueden modificarse externamente',
+      () {
+        final plan = RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: [step1, step2],
+          geometry: [origin, destination],
+          totalDistanceMeters: 40000.0,
+          estimatedDuration: const Duration(minutes: 45),
+        );
 
-      expect(() => plan.maneuvers.add(step3), throwsA(isA<UnsupportedError>()));
-      expect(() => plan.maneuvers.clear(), throwsA(isA<UnsupportedError>()));
-      expect(
-          () => plan.geometry.add(waypoint), throwsA(isA<UnsupportedError>()));
-      expect(() => plan.geometry.clear(), throwsA(isA<UnsupportedError>()));
-    });
+        expect(
+          () => plan.maneuvers.add(step3),
+          throwsA(isA<UnsupportedError>()),
+        );
+        expect(() => plan.maneuvers.clear(), throwsA(isA<UnsupportedError>()));
+        expect(
+          () => plan.geometry.add(waypoint),
+          throwsA(isA<UnsupportedError>()),
+        );
+        expect(() => plan.geometry.clear(), throwsA(isA<UnsupportedError>()));
+      },
+    );
 
     test(
-        'modificar la lista original antes del constructor no afecta la entidad (copia defensiva)',
-        () {
-      final mutableManeuvers = [step1, step2];
-      final mutableGeometry = [origin, destination];
+      'modificar la lista original antes del constructor no afecta la entidad (copia defensiva)',
+      () {
+        final mutableManeuvers = [step1, step2];
+        final mutableGeometry = [origin, destination];
 
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: mutableManeuvers,
-        geometry: mutableGeometry,
-        totalDistanceMeters: 40000.0,
-        estimatedDuration: const Duration(minutes: 45),
-      );
+        final plan = RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: mutableManeuvers,
+          geometry: mutableGeometry,
+          totalDistanceMeters: 40000.0,
+          estimatedDuration: const Duration(minutes: 45),
+        );
 
-      mutableManeuvers.add(step3);
-      mutableGeometry.add(waypoint);
+        mutableManeuvers.add(step3);
+        mutableGeometry.add(waypoint);
 
-      expect(plan.maneuvers.length, equals(2));
-      expect(plan.geometry.length, equals(2));
-    });
+        expect(plan.maneuvers.length, equals(2));
+        expect(plan.geometry.length, equals(2));
+      },
+    );
   });
 
   group(
-      'RoutePlan - Responsabilidades, limitaciones y no consistencia forzada de distancias',
-      () {
-    test(
+    'RoutePlan - Responsabilidades, limitaciones y no consistencia forzada de distancias',
+    () {
+      test(
         'calculateDirectDistance calcula Haversine directo sin considerar carretera',
         () {
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2, step3],
-        geometry: [origin, waypoint, destination],
-        totalDistanceMeters: 45000.0,
-        estimatedDuration: const Duration(minutes: 50),
+          final plan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1, step2, step3],
+            geometry: [origin, waypoint, destination],
+            totalDistanceMeters: 45000.0,
+            estimatedDuration: const Duration(minutes: 50),
+          );
+
+          final direct = plan.calculateDirectDistance();
+          expect(direct, closeTo(31100, 400));
+          expect(direct, lessThan(plan.totalDistanceMeters));
+        },
       );
 
-      final direct = plan.calculateDirectDistance();
-      expect(direct, closeTo(31100, 400));
-      expect(direct, lessThan(plan.totalDistanceMeters));
-    });
-
-    test(
+      test(
         'calculateGeometryDistance devuelve 0.0 en geometrías vacías o de un solo punto',
         () {
-      final emptyGeomPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1],
-        geometry: const [],
-        totalDistanceMeters: 1000.0,
-        estimatedDuration: const Duration(minutes: 2),
-      );
-      final singlePointPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1],
-        geometry: [origin],
-        totalDistanceMeters: 1000.0,
-        estimatedDuration: const Duration(minutes: 2),
+          final emptyGeomPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1],
+            geometry: const [],
+            totalDistanceMeters: 1000.0,
+            estimatedDuration: const Duration(minutes: 2),
+          );
+          final singlePointPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1],
+            geometry: [origin],
+            totalDistanceMeters: 1000.0,
+            estimatedDuration: const Duration(minutes: 2),
+          );
+
+          expect(emptyGeomPlan.calculateGeometryDistance(), equals(0.0));
+          expect(singlePointPlan.calculateGeometryDistance(), equals(0.0));
+        },
       );
 
-      expect(emptyGeomPlan.calculateGeometryDistance(), equals(0.0));
-      expect(singlePointPlan.calculateGeometryDistance(), equals(0.0));
-    });
-
-    test(
+      test(
         'calculateGeometryDistance suma segmentos rectos consecutivos de la polilínea',
         () {
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2],
-        geometry: [origin, waypoint, destination],
-        totalDistanceMeters: 40000.0,
-        estimatedDuration: const Duration(minutes: 40),
+          final plan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1, step2],
+            geometry: [origin, waypoint, destination],
+            totalDistanceMeters: 40000.0,
+            estimatedDuration: const Duration(minutes: 40),
+          );
+
+          final expectedSum =
+              origin.distanceTo(waypoint) + waypoint.distanceTo(destination);
+          expect(plan.calculateGeometryDistance(), closeTo(expectedSum, 0.001));
+        },
       );
 
-      final expectedSum =
-          origin.distanceTo(waypoint) + waypoint.distanceTo(destination);
-      expect(plan.calculateGeometryDistance(), closeTo(expectedSum, 0.001));
-    });
-
-    test(
+      test(
         'no se asume consistencia artificial entre calculateGeometryDistance y totalDistanceMeters',
         () {
-      // Un proveedor entrega una polilínea simplificada con longitud menor a la distancia vial real
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2, step3],
-        geometry: [
-          origin,
-          destination
-        ], // Polilínea simplificada a línea directa (~31.1 km)
-        totalDistanceMeters:
-            45000.0, // Proveedor declara 45 km reales por carretera
-        estimatedDuration: const Duration(minutes: 50),
+          // Un proveedor entrega una polilínea simplificada con longitud menor a la distancia vial real
+          final plan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1, step2, step3],
+            geometry: [
+              origin,
+              destination,
+            ], // Polilínea simplificada a línea directa (~31.1 km)
+            totalDistanceMeters:
+                45000.0, // Proveedor declara 45 km reales por carretera
+            estimatedDuration: const Duration(minutes: 50),
+          );
+
+          final geometrySum = plan.calculateGeometryDistance();
+
+          // Comprueba que no se fuerzan a ser idénticos ni se lanzan excepciones
+          expect(geometrySum, closeTo(31100, 400));
+          expect(plan.totalDistanceMeters, equals(45000.0));
+          expect(geometrySum, isNot(equals(plan.totalDistanceMeters)));
+        },
       );
 
-      final geometrySum = plan.calculateGeometryDistance();
-
-      // Comprueba que no se fuerzan a ser idénticos ni se lanzan excepciones
-      expect(geometrySum, closeTo(31100, 400));
-      expect(plan.totalDistanceMeters, equals(45000.0));
-      expect(geometrySum, isNot(equals(plan.totalDistanceMeters)));
-    });
-
-    test(
+      test(
         'copyWithRemainingDistance actualiza la distancia restante de forma inmutable',
         () {
-      final initialPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2],
-        totalDistanceMeters: 40000.0,
-        estimatedDuration: const Duration(minutes: 40),
-        remainingDistanceMeters: 40000.0,
+          final initialPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1, step2],
+            totalDistanceMeters: 40000.0,
+            estimatedDuration: const Duration(minutes: 40),
+            remainingDistanceMeters: 40000.0,
+          );
+
+          final updatedPlan = initialPlan.copyWithRemainingDistance(25000.0);
+
+          expect(updatedPlan.remainingDistanceMeters, equals(25000.0));
+          expect(initialPlan.remainingDistanceMeters, equals(40000.0));
+
+          expect(
+            () => initialPlan.copyWithRemainingDistance(-10.0),
+            throwsA(isA<ArgumentError>()),
+          );
+          expect(
+            () => initialPlan.copyWithRemainingDistance(50000.0),
+            throwsA(isA<ArgumentError>()),
+          );
+        },
       );
 
-      final updatedPlan = initialPlan.copyWithRemainingDistance(25000.0);
-
-      expect(updatedPlan.remainingDistanceMeters, equals(25000.0));
-      expect(initialPlan.remainingDistanceMeters, equals(40000.0));
-
-      expect(
-        () => initialPlan.copyWithRemainingDistance(-10.0),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        () => initialPlan.copyWithRemainingDistance(50000.0),
-        throwsA(isA<ArgumentError>()),
-      );
-    });
-
-    test(
+      test(
         'copyWith permite establecer remainingDistanceMeters explícitamente en null',
         () {
-      final initialPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2],
-        totalDistanceMeters: 40000.0,
-        estimatedDuration: const Duration(minutes: 40),
-        remainingDistanceMeters: 20000.0,
+          final initialPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1, step2],
+            totalDistanceMeters: 40000.0,
+            estimatedDuration: const Duration(minutes: 40),
+            remainingDistanceMeters: 20000.0,
+          );
+
+          final clearedPlan = initialPlan.copyWith(
+            remainingDistanceMeters: null,
+          );
+
+          expect(clearedPlan.remainingDistanceMeters, isNull);
+          expect(
+            clearedPlan.totalDistanceMeters,
+            equals(initialPlan.totalDistanceMeters),
+          );
+          expect(clearedPlan.origin, equals(initialPlan.origin));
+        },
       );
 
-      final clearedPlan = initialPlan.copyWith(remainingDistanceMeters: null);
-
-      expect(clearedPlan.remainingDistanceMeters, isNull);
-      expect(clearedPlan.totalDistanceMeters,
-          equals(initialPlan.totalDistanceMeters));
-      expect(clearedPlan.origin, equals(initialPlan.origin));
-    });
-
-    test('copyWith preserva remainingDistanceMeters si se omite el argumento',
+      test(
+        'copyWith preserva remainingDistanceMeters si se omite el argumento',
         () {
-      final initialPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1, step2],
-        totalDistanceMeters: 40000.0,
-        estimatedDuration: const Duration(minutes: 40),
-        remainingDistanceMeters: 20000.0,
+          final initialPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1, step2],
+            totalDistanceMeters: 40000.0,
+            estimatedDuration: const Duration(minutes: 40),
+            remainingDistanceMeters: 20000.0,
+          );
+
+          final updatedPlan = initialPlan.copyWith(
+            totalDistanceMeters: 42000.0,
+          );
+
+          expect(updatedPlan.remainingDistanceMeters, equals(20000.0));
+          expect(updatedPlan.totalDistanceMeters, equals(42000.0));
+        },
       );
 
-      final updatedPlan = initialPlan.copyWith(totalDistanceMeters: 42000.0);
-
-      expect(updatedPlan.remainingDistanceMeters, equals(20000.0));
-      expect(updatedPlan.totalDistanceMeters, equals(42000.0));
-    });
-
-    test(
+      test(
         'copyWith lanza TypeError si se pasa un tipo incompatible a remainingDistanceMeters',
         () {
-      final initialPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1],
-        totalDistanceMeters: 1000.0,
-        estimatedDuration: const Duration(minutes: 2),
+          final initialPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1],
+            totalDistanceMeters: 1000.0,
+            estimatedDuration: const Duration(minutes: 2),
+          );
+
+          expect(
+            () => initialPlan.copyWith(
+              remainingDistanceMeters: 'distancia_invalida',
+            ),
+            throwsA(isA<TypeError>()),
+          );
+        },
       );
 
-      expect(
-        () =>
-            initialPlan.copyWith(remainingDistanceMeters: 'distancia_invalida'),
-        throwsA(isA<TypeError>()),
-      );
-    });
-
-    test(
+      test(
         'copyWith valida restricciones de dominio y lanza ArgumentError ante valores inválidos',
         () {
-      final initialPlan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1],
-        totalDistanceMeters: 1000.0,
-        estimatedDuration: const Duration(minutes: 2),
+          final initialPlan = RoutePlan(
+            origin: origin,
+            destination: destination,
+            maneuvers: [step1],
+            totalDistanceMeters: 1000.0,
+            estimatedDuration: const Duration(minutes: 2),
+          );
+
+          expect(
+            () => initialPlan.copyWith(totalDistanceMeters: -50.0),
+            throwsA(isA<ArgumentError>()),
+          );
+
+          expect(
+            () => initialPlan.copyWith(remainingDistanceMeters: -1.0),
+            throwsA(isA<ArgumentError>()),
+          );
+
+          expect(
+            () => initialPlan.copyWith(remainingDistanceMeters: 5000.0),
+            throwsA(isA<ArgumentError>()),
+          );
+
+          // copyWith() aplica la misma validación estricta
+          expect(
+            () => initialPlan.copyWith(remainingDistanceMeters: 1000.0),
+            returnsNormally,
+          );
+
+          expect(
+            () => initialPlan.copyWith(
+              remainingDistanceMeters: 1000.0000000000001,
+            ),
+            throwsA(isA<ArgumentError>()),
+          );
+
+          expect(
+            () => initialPlan.copyWith(remainingDistanceMeters: 1001.0),
+            throwsA(isA<ArgumentError>()),
+          );
+        },
       );
 
-      expect(
-        () => initialPlan.copyWith(totalDistanceMeters: -50.0),
-        throwsA(isA<ArgumentError>()),
-      );
-
-      expect(
-        () => initialPlan.copyWith(remainingDistanceMeters: -1.0),
-        throwsA(isA<ArgumentError>()),
-      );
-
-      expect(
-        () => initialPlan.copyWith(remainingDistanceMeters: 5000.0),
-        throwsA(isA<ArgumentError>()),
-      );
-
-      // copyWith() aplica la misma validación estricta
-      expect(
-        () => initialPlan.copyWith(remainingDistanceMeters: 1000.0),
-        returnsNormally,
-      );
-
-      expect(
-        () => initialPlan.copyWith(remainingDistanceMeters: 1000.0000000000001),
-        throwsA(isA<ArgumentError>()),
-      );
-
-      expect(
-        () => initialPlan.copyWith(remainingDistanceMeters: 1001.0),
-        throwsA(isA<ArgumentError>()),
-      );
-    });
-
-    test(
+      test(
         'rechaza estrictamente cualquier distancia restante mayor a la total sin tolerancias',
         () {
-      // remainingDistanceMeters == totalDistanceMeters es válido
-      expect(
-        () => RoutePlan(
-          origin: origin,
-          destination: destination,
-          maneuvers: [step1],
-          totalDistanceMeters: 1000.0,
-          estimatedDuration: const Duration(minutes: 2),
-          remainingDistanceMeters: 1000.0,
-        ),
-        returnsNormally,
-      );
+          // remainingDistanceMeters == totalDistanceMeters es válido
+          expect(
+            () => RoutePlan(
+              origin: origin,
+              destination: destination,
+              maneuvers: [step1],
+              totalDistanceMeters: 1000.0,
+              estimatedDuration: const Duration(minutes: 2),
+              remainingDistanceMeters: 1000.0,
+            ),
+            returnsNormally,
+          );
 
-      // Exceso mínimo representable como double distinto de 1000.0
-      const smallExcess = 1000.0000000000001;
-      expect(smallExcess > 1000.0, isTrue);
-      expect(
-        () => RoutePlan(
-          origin: origin,
-          destination: destination,
-          maneuvers: [step1],
-          totalDistanceMeters: 1000.0,
-          estimatedDuration: const Duration(minutes: 2),
-          remainingDistanceMeters: smallExcess,
-        ),
-        throwsA(isA<ArgumentError>()),
-      );
+          // Exceso mínimo representable como double distinto de 1000.0
+          const smallExcess = 1000.0000000000001;
+          expect(smallExcess > 1000.0, isTrue);
+          expect(
+            () => RoutePlan(
+              origin: origin,
+              destination: destination,
+              maneuvers: [step1],
+              totalDistanceMeters: 1000.0,
+              estimatedDuration: const Duration(minutes: 2),
+              remainingDistanceMeters: smallExcess,
+            ),
+            throwsA(isA<ArgumentError>()),
+          );
 
-      // Exceso de 1 metro (anterior tolerancia) ahora debe ser rechazado
-      expect(
-        () => RoutePlan(
-          origin: origin,
-          destination: destination,
-          maneuvers: [step1],
-          totalDistanceMeters: 1000.0,
-          estimatedDuration: const Duration(minutes: 2),
-          remainingDistanceMeters: 1001.0,
-        ),
-        throwsA(isA<ArgumentError>()),
+          // Exceso de 1 metro (anterior tolerancia) ahora debe ser rechazado
+          expect(
+            () => RoutePlan(
+              origin: origin,
+              destination: destination,
+              maneuvers: [step1],
+              totalDistanceMeters: 1000.0,
+              estimatedDuration: const Duration(minutes: 2),
+              remainingDistanceMeters: 1001.0,
+            ),
+            throwsA(isA<ArgumentError>()),
+          );
+        },
       );
-    });
-  });
+    },
+  );
 
   group('RoutePlan - Igualdad estructural y representación', () {
     test('planes de ruta idénticos son considerados iguales', () {
@@ -571,21 +622,22 @@ void main() {
     });
 
     test(
-        'toString retorna formato legible con distancia y cantidad de maniobras',
-        () {
-      final plan = RoutePlan(
-        origin: origin,
-        destination: destination,
-        maneuvers: [step1],
-        geometry: [origin, destination],
-        totalDistanceMeters: 1000.0,
-        estimatedDuration: const Duration(minutes: 2),
-        remainingDistanceMeters: 800.0,
-      );
+      'toString retorna formato legible con distancia y cantidad de maniobras',
+      () {
+        final plan = RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: [step1],
+          geometry: [origin, destination],
+          totalDistanceMeters: 1000.0,
+          estimatedDuration: const Duration(minutes: 2),
+          remainingDistanceMeters: 800.0,
+        );
 
-      expect(plan.toString(), contains('RoutePlan('));
-      expect(plan.toString(), contains('roadDist: 1000.0 m'));
-      expect(plan.toString(), contains('remaining: 800.0 m'));
-    });
+        expect(plan.toString(), contains('RoutePlan('));
+        expect(plan.toString(), contains('roadDist: 1000.0 m'));
+        expect(plan.toString(), contains('remaining: 800.0 m'));
+      },
+    );
   });
 }

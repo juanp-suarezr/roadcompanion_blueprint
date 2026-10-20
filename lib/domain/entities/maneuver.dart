@@ -105,8 +105,9 @@ class Maneuver {
       distanceMeters: identical(distanceMeters, _sentinel)
           ? this.distanceMeters
           : distanceMeters as double?,
-      roadName:
-          identical(roadName, _sentinel) ? this.roadName : roadName as String?,
+      roadName: identical(roadName, _sentinel)
+          ? this.roadName
+          : roadName as String?,
       exitNumber: identical(exitNumber, _sentinel)
           ? this.exitNumber
           : exitNumber as int?,
@@ -129,14 +130,14 @@ class Maneuver {
 
   @override
   int get hashCode => Object.hash(
-        instructionText,
-        type,
-        location,
-        distanceMeters,
-        roadName,
-        exitNumber,
-        confidence,
-      );
+    instructionText,
+    type,
+    location,
+    distanceMeters,
+    roadName,
+    exitNumber,
+    confidence,
+  );
 
   @override
   String toString() =>

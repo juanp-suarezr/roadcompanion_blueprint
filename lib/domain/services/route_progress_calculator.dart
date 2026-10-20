@@ -187,8 +187,10 @@ class RouteProgressCalculator {
 
     // 1. Precomputar longitudes de segmentos y distancias acumuladas a lo largo de la geometría
     final List<double> segmentLengths = List<double>.filled(numSegments, 0.0);
-    final List<double> cumulativeDistances =
-        List<double>.filled(numSegments, 0.0);
+    final List<double> cumulativeDistances = List<double>.filled(
+      numSegments,
+      0.0,
+    );
 
     double totalGeomDist = 0.0;
     for (int i = 0; i < numSegments; i++) {
@@ -201,7 +203,8 @@ class RouteProgressCalculator {
       totalGeomDist += len;
       if (!totalGeomDist.isFinite) {
         throw StateError(
-            'La distancia acumulada de la ruta excedió el límite numérico finito.');
+          'La distancia acumulada de la ruta excedió el límite numérico finito.',
+        );
       }
     }
 
@@ -308,18 +311,22 @@ class RouteProgressCalculator {
     }
 
     // 4. Cálculo de proporción geométrica y traslación a distancias de carretera
-    final double progressRatio =
-        (bestTraveledAlongGeometry / totalGeomDist).clamp(0.0, 1.0);
+    final double progressRatio = (bestTraveledAlongGeometry / totalGeomDist)
+        .clamp(0.0, 1.0);
 
     final double traveled;
     final double remaining;
 
     if (totalDistanceMeters != null) {
-      traveled =
-          (progressRatio * totalDistanceMeters).clamp(0.0, totalDistanceMeters);
+      traveled = (progressRatio * totalDistanceMeters).clamp(
+        0.0,
+        totalDistanceMeters,
+      );
       // remaining = total - traveled garantiza que remaining <= totalDistanceMeters y coherencia de suma dentro de IEEE 754
-      remaining =
-          (totalDistanceMeters - traveled).clamp(0.0, totalDistanceMeters);
+      remaining = (totalDistanceMeters - traveled).clamp(
+        0.0,
+        totalDistanceMeters,
+      );
     } else {
       traveled = bestTraveledAlongGeometry.clamp(0.0, totalGeomDist);
       remaining = (totalGeomDist - traveled).clamp(0.0, totalGeomDist);
@@ -327,7 +334,8 @@ class RouteProgressCalculator {
 
     if (!traveled.isFinite || !remaining.isFinite) {
       throw StateError(
-          'Los cálculos de distancia produjeron valores no finitos.');
+        'Los cálculos de distancia produjeron valores no finitos.',
+      );
     }
 
     double percentage = (progressRatio * 100.0).clamp(0.0, 100.0);

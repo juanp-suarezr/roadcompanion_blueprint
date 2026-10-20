@@ -46,8 +46,8 @@ class RoutePlan {
     required this.totalDistanceMeters,
     required this.estimatedDuration,
     this.remainingDistanceMeters,
-  })  : _maneuvers = List.unmodifiable(maneuvers),
-        _geometry = List.unmodifiable(geometry) {
+  }) : _maneuvers = List.unmodifiable(maneuvers),
+       _geometry = List.unmodifiable(geometry) {
     if (!totalDistanceMeters.isFinite) {
       throw ArgumentError.value(
         totalDistanceMeters,
@@ -214,14 +214,14 @@ class RoutePlan {
 
   @override
   int get hashCode => Object.hash(
-        origin,
-        destination,
-        Object.hashAll(_maneuvers),
-        Object.hashAll(_geometry),
-        totalDistanceMeters,
-        estimatedDuration,
-        remainingDistanceMeters,
-      );
+    origin,
+    destination,
+    Object.hashAll(_maneuvers),
+    Object.hashAll(_geometry),
+    totalDistanceMeters,
+    estimatedDuration,
+    remainingDistanceMeters,
+  );
 
   @override
   String toString() =>
