@@ -63,10 +63,10 @@ void main() {
 
   group('RouteProgressCalculator - Varios segmentos y giros reales', () {
     // Ruta en "L": pA -> pB (norte) -> pC_east (este)
-    final pC_east = Coordinates(pB.latitude, pB.longitude + 0.05);
-    final multiGeometry = [pA, pB, pC_east];
+    final pcEast = Coordinates(pB.latitude, pB.longitude + 0.05);
+    final multiGeometry = [pA, pB, pcEast];
     final seg0Len = pA.distanceTo(pB);
-    final seg1Len = pB.distanceTo(pC_east);
+    final seg1Len = pB.distanceTo(pcEast);
     final totalGeom = seg0Len + seg1Len;
 
     test(
@@ -83,7 +83,7 @@ void main() {
         currentPosition: quarterPoint,
       );
 
-      final directHaversineToDest = quarterPoint.distanceTo(pC_east);
+      final directHaversineToDest = quarterPoint.distanceTo(pcEast);
 
       // La distancia restante por carretera debe ser la suma del tramo restante del segmento 0 más el segmento 1
       expect(

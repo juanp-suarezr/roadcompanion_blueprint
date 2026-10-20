@@ -1,7 +1,7 @@
 /// Biblioteca principal de dominio para Road Companion.
 ///
 /// Contiene las entidades esenciales de navegación, maniobras y cálculo de rutas.
-library road_companion;
+library;
 
 export 'domain/entities/coordinates.dart';
 export 'domain/entities/maneuver.dart';
