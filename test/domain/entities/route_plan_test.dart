@@ -438,6 +438,112 @@ void main() {
       expect(updatedPlan.remainingDistanceMeters, equals(20000.0));
       expect(updatedPlan.totalDistanceMeters, equals(42000.0));
     });
+
+    test(
+        'copyWith lanza TypeError si se pasa un tipo incompatible a remainingDistanceMeters',
+        () {
+      final initialPlan = RoutePlan(
+        origin: origin,
+        destination: destination,
+        maneuvers: [step1],
+        totalDistanceMeters: 1000.0,
+        estimatedDuration: const Duration(minutes: 2),
+      );
+
+      expect(
+        () =>
+            initialPlan.copyWith(remainingDistanceMeters: 'distancia_invalida'),
+        throwsA(isA<TypeError>()),
+      );
+    });
+
+    test(
+        'copyWith valida restricciones de dominio y lanza ArgumentError ante valores inválidos',
+        () {
+      final initialPlan = RoutePlan(
+        origin: origin,
+        destination: destination,
+        maneuvers: [step1],
+        totalDistanceMeters: 1000.0,
+        estimatedDuration: const Duration(minutes: 2),
+      );
+
+      expect(
+        () => initialPlan.copyWith(totalDistanceMeters: -50.0),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => initialPlan.copyWith(remainingDistanceMeters: -1.0),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => initialPlan.copyWith(remainingDistanceMeters: 5000.0),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // copyWith() aplica la misma validación estricta
+      expect(
+        () => initialPlan.copyWith(remainingDistanceMeters: 1000.0),
+        returnsNormally,
+      );
+
+      expect(
+        () => initialPlan.copyWith(remainingDistanceMeters: 1000.0000000000001),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => initialPlan.copyWith(remainingDistanceMeters: 1001.0),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test(
+        'rechaza estrictamente cualquier distancia restante mayor a la total sin tolerancias',
+        () {
+      // remainingDistanceMeters == totalDistanceMeters es válido
+      expect(
+        () => RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: [step1],
+          totalDistanceMeters: 1000.0,
+          estimatedDuration: const Duration(minutes: 2),
+          remainingDistanceMeters: 1000.0,
+        ),
+        returnsNormally,
+      );
+
+      // Exceso mínimo representable como double distinto de 1000.0
+      const smallExcess = 1000.0000000000001;
+      expect(smallExcess > 1000.0, isTrue);
+      expect(
+        () => RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: [step1],
+          totalDistanceMeters: 1000.0,
+          estimatedDuration: const Duration(minutes: 2),
+          remainingDistanceMeters: smallExcess,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // Exceso de 1 metro (anterior tolerancia) ahora debe ser rechazado
+      expect(
+        () => RoutePlan(
+          origin: origin,
+          destination: destination,
+          maneuvers: [step1],
+          totalDistanceMeters: 1000.0,
+          estimatedDuration: const Duration(minutes: 2),
+          remainingDistanceMeters: 1001.0,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
   });
 
   group('RoutePlan - Igualdad estructural y representación', () {

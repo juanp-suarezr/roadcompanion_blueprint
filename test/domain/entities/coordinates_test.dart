@@ -142,6 +142,20 @@ void main() {
       // Representan el mismo meridiano exacto opuesto a Greenwich
       expect(east.distanceTo(west), closeTo(0.0, 0.001));
     });
+
+    test(
+        'distancia entre polos norte y sur es media circunferencia terrestre (~20.015 km)',
+        () {
+      final northPole = Coordinates(90.0, 0.0);
+      final southPole = Coordinates(-90.0, 0.0);
+      expect(northPole.distanceTo(southPole), closeTo(20015086, 1000));
+    });
+
+    test('distancia entre puntos antipodales en el ecuador (~20.015 km)', () {
+      final p1 = Coordinates(0.0, 0.0);
+      final p2 = Coordinates(0.0, 180.0);
+      expect(p1.distanceTo(p2), closeTo(20015086, 1000));
+    });
   });
 
   group('Coordinates - Igualdad e inmutabilidad', () {
@@ -150,6 +164,14 @@ void main() {
       final c2 = Coordinates(4.8133, -75.6961);
       expect(c1, equals(c2));
       expect(c1.hashCode, equals(c2.hashCode));
+    });
+
+    test('trata 0.0 y -0.0 como coordenadas equivalentes en rango e igualdad',
+        () {
+      final cPositiveZero = Coordinates(0.0, 0.0);
+      final cNegativeZero = Coordinates(-0.0, -0.0);
+      expect(cPositiveZero, equals(cNegativeZero));
+      expect(cPositiveZero.distanceTo(cNegativeZero), equals(0.0));
     });
 
     test('coordenadas con valores distintos no son iguales', () {

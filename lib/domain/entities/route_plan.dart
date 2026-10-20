@@ -84,8 +84,7 @@ class RoutePlan {
           'La distancia restante por carretera no puede ser negativa.',
         );
       }
-      // Permitimos una tolerancia mínima de 1 metro para evitar discrepancias de redondeo en flotantes
-      if (remainingDistanceMeters! > totalDistanceMeters + 1.0) {
+      if (remainingDistanceMeters! > totalDistanceMeters) {
         throw ArgumentError.value(
           remainingDistanceMeters,
           'remainingDistanceMeters',
@@ -145,7 +144,7 @@ class RoutePlan {
   ///
   /// RESPONSABILIDAD:
   /// - Crear una nueva instancia inmutable de [RoutePlan] validando que [newRemainingMeters]
-  ///   sea finito, no negativo y no exceda la distancia total (con tolerancia de 1 m).
+  ///   sea finito, no negativo y no exceda la distancia total.
   ///
   /// LIMITACIONES CRÍTICAS:
   /// - Es una función de asignación y validación pura sobre el estado inmutable.

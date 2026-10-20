@@ -43,6 +43,13 @@ class Maneuver {
         'El texto de la instrucción no puede estar vacío.',
       );
     }
+    if (roadName != null && roadName!.trim().isEmpty) {
+      throw ArgumentError.value(
+        roadName,
+        'roadName',
+        'El nombre de la vía no puede estar vacío si se suministra.',
+      );
+    }
     if (distanceMeters != null) {
       if (!distanceMeters!.isFinite) {
         throw ArgumentError.value(

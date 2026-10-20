@@ -94,6 +94,36 @@ void main() {
       );
     });
 
+    test('rechaza nombre de vía vacío o solo espacios cuando no es nulo', () {
+      expect(
+        () => Maneuver(
+          instructionText: 'Continúa',
+          type: ManeuverType.straight,
+          location: testLocation,
+          roadName: '',
+        ),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.name,
+          'name',
+          'roadName',
+        )),
+      );
+
+      expect(
+        () => Maneuver(
+          instructionText: 'Continúa',
+          type: ManeuverType.straight,
+          location: testLocation,
+          roadName: '   ',
+        ),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.name,
+          'name',
+          'roadName',
+        )),
+      );
+    });
+
     test('rechaza distancia de maniobra negativa', () {
       expect(
         () => Maneuver(
@@ -306,6 +336,32 @@ void main() {
       expect(updated.distanceMeters, equals(120.0));
       expect(updated.roadName, equals('Calle 14'));
       expect(updated.exitNumber, equals(1));
+    });
+
+    test(
+        'copyWith lanza TypeError si se pasa un tipo incompatible a distanceMeters',
+        () {
+      expect(
+        () => completeManeuver.copyWith(distanceMeters: 'no_es_un_double'),
+        throwsA(isA<TypeError>()),
+      );
+    });
+
+    test('copyWith lanza TypeError si se pasa un tipo incompatible a roadName',
+        () {
+      expect(
+        () => completeManeuver.copyWith(roadName: 12345),
+        throwsA(isA<TypeError>()),
+      );
+    });
+
+    test(
+        'copyWith lanza TypeError si se pasa un tipo incompatible a exitNumber',
+        () {
+      expect(
+        () => completeManeuver.copyWith(exitNumber: 'salida_tres'),
+        throwsA(isA<TypeError>()),
+      );
     });
 
     test('compara correctamente por valor e igualdad estructural', () {
