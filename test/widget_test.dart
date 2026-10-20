@@ -66,6 +66,11 @@ void main() {
       expect(find.byType(NavigationScreen), findsOneWidget);
       expect(find.text('Navegación Asistida'), findsOneWidget);
       expect(find.text('DEMO'), findsOneWidget);
+
+      // Cambiar a la vista Demo
+      await tester.tap(find.text('DEMO'));
+      await tester.pumpAndSettle();
+
       expect(
         find.text('Esquema de calzada • No es mapa GPS real'),
         findsOneWidget,

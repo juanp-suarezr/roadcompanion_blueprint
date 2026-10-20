@@ -82,6 +82,9 @@ class Maneuver {
     }
   }
 
+  /// Texto de instrucción de la maniobra (alias de compatibilidad con [instructionText]).
+  String get instruction => instructionText;
+
   /// Crea una copia inmutable con campos modificados.
   ///
   /// Para los campos opcionales ([distanceMeters], [roadName], [exitNumber]),
