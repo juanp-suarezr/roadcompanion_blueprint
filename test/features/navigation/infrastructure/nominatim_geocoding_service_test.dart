@@ -93,7 +93,7 @@ void main() {
 
       final service = NominatimGeocodingService(client: mockClient);
       final dest = await service.reverseGeocode(
-        const Coordinates(5.068, -75.517),
+        Coordinates(5.068, -75.517),
       );
 
       expect(dest, isNotNull);

@@ -524,6 +524,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
             child: _buildErrorBanner(_routeErrorMessage!),
           ),
 
+        // Banner de error si la importación GPX falla
+        if (routeState.errorMessage != null)
+          Positioned(
+            top: 80.0,
+            left: 16.0,
+            right: 16.0,
+            child: _buildGpxErrorCard(routeState, isDark),
+          ),
+
         // 5. Tarjeta de resumen de ruta calculada (antes de iniciar navegación)
         if (_calculatedRoute != null &&
             _selectedDestination != null &&
@@ -735,7 +744,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                       onClearRoute: () {
                         routeState.clearRoute();
                         setState(
-                          () => _currentMode = NavigationScreenMode.realMap,
+                          () => _currentMode = NavigationScreenMode.demo,
                         );
                       },
                       onImportAnother: () => _openSavedRoutes(routeState),
@@ -749,12 +758,85 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
   }
 
+  Widget _buildGpxErrorCard(ImportedRouteState routeState, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(14.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDEDED),
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFEF5350), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Color(0xFFC62828),
+                size: 22.0,
+              ),
+              const SizedBox(width: 10.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Error al importar archivo GPX',
+                      style: TextStyle(
+                        fontSize: 13.0,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFB71C1C),
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    Text(
+                      routeState.errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12.0,
+                        height: 1.3,
+                        color: Color(0xFF5F2120),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18.0),
+                color: const Color(0xFF5F2120),
+                tooltip: 'Descartar error',
+                onPressed: routeState.clearMessages,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8.0),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _handleImportGpx(routeState),
+              icon: const Icon(Icons.refresh, size: 16.0),
+              label: const Text('Reintentar importación'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFB71C1C),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDemoContent(bool isDark, ImportedRouteState routeState) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (routeState.errorMessage != null) ...[
+            _buildGpxErrorCard(routeState, isDark),
+            const SizedBox(height: 14.0),
+          ],
           // Banner de aviso de modo demo
           Container(
             padding: const EdgeInsets.symmetric(
@@ -771,17 +853,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.science_outlined,
-                  size: 18.0,
-                  color: isDark
-                      ? AppColors.cyanLuminous
-                      : AppColors.electricBlue,
+                const StormBadge(
+                  label: 'DEMO',
+                  icon: Icons.science_outlined,
+                  variant: StormBadgeVariant.info,
                 ),
                 const SizedBox(width: 10.0),
                 Expanded(
                   child: Text(
-                    'Modo Demostración activo: Honda → Norcasia (54 km). Toca MAPA para navegar en tiempo real.',
+                    'Simulación activa: Honda → La Dorada → Norcasia (54 km). Datos calculados con el motor de dominio puro.',
                     style: TextStyle(
                       fontSize: 12.0,
                       fontWeight: FontWeight.w600,

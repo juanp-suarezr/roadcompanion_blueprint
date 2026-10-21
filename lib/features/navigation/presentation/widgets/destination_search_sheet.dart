@@ -301,13 +301,13 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                         1000.0;
                   }
 
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.cardNavy
-                          : AppColors.lightBackground,
+                  return Material(
+                    color: isDark
+                        ? AppColors.cardNavy
+                        : AppColors.lightBackground,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.0),
-                      border: Border.all(
+                      side: BorderSide(
                         color: isDark
                             ? const Color(0xFF264660)
                             : AppColors.silver,

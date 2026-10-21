@@ -147,17 +147,17 @@ class SavedRoutesSheet extends StatelessWidget {
                   final route = savedRoutes[index];
                   final isActive = route.name == activeRouteName;
 
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? (isDark
-                                ? AppColors.steelBlue.withValues(alpha: 0.25)
-                                : const Color(0xFFE9F2FA))
-                          : (isDark
-                                ? AppColors.darkSurfaceVariant
-                                : AppColors.lightBackground),
+                  return Material(
+                    color: isActive
+                        ? (isDark
+                              ? AppColors.steelBlue.withValues(alpha: 0.25)
+                              : const Color(0xFFE9F2FA))
+                        : (isDark
+                              ? AppColors.darkSurfaceVariant
+                              : AppColors.lightBackground),
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.0),
-                      border: Border.all(
+                      side: BorderSide(
                         color: isActive
                             ? (isDark
                                   ? AppColors.accentBlue

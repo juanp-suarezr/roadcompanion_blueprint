@@ -9,6 +9,7 @@ import 'package:road_companion/features/navigation/presentation/navigation_scree
 import 'package:road_companion/features/navigation/presentation/state/imported_route_state.dart';
 import 'package:road_companion/features/navigation/presentation/widgets/gpx_route_card.dart';
 import 'package:road_companion/features/navigation/presentation/widgets/gpx_track_view.dart';
+import 'package:road_companion/features/navigation/presentation/widgets/real_map_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Fake de GpxFilePicker para pruebas de interfaz controladas sin abrir selectores del sistema operativo.
@@ -133,9 +134,9 @@ void main() {
         // Se muestra SnackBar de cancelación
         expect(find.text('Selección de archivo cancelada.'), findsOneWidget);
 
-        // Permanece en modo DEMO con controles de simulación
+        // Permanece en modo de mapa real sin alterar el estado
         expect(find.text('DEMO'), findsOneWidget);
-        expect(find.text('Simular'), findsOneWidget);
+        expect(find.byType(RealMapWidget), findsOneWidget);
         expect(find.byType(GpxRouteCard), findsNothing);
       },
     );

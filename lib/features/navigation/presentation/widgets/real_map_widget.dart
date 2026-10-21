@@ -165,15 +165,13 @@ class RealMapWidget extends StatelessWidget {
             // Capa de marcadores (Posición del rider y destino)
             MarkerLayer(markers: markers),
 
-            // Atribución de fuente de datos abierta
-            const RichAttributionWidget(
-              alignment: AttributionAlignment.bottomLeft,
-              attributions: [
-                TextSourceAttribution(
-                  '© OpenStreetMap, © CARTO',
-                  textStyle: TextStyle(fontSize: 9.0, color: Colors.white70),
-                ),
-              ],
+            // Atribución de fuente de datos abierta visible
+            SimpleAttributionWidget(
+              alignment: Alignment.bottomLeft,
+              source: const Text(
+                '© OpenStreetMap, © CARTO',
+                style: TextStyle(fontSize: 9.0, color: Colors.white70),
+              ),
             ),
           ],
         ),

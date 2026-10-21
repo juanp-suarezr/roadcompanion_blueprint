@@ -308,31 +308,24 @@ class ActiveTurnByTurnHud extends StatelessWidget {
 
   IconData _getManeuverIcon(ManeuverType type) {
     switch (type) {
-      case ManeuverType.turnLeft:
-      case ManeuverType.turnSharpLeft:
+      case ManeuverType.left:
+      case ManeuverType.sharpLeft:
         return Icons.turn_left;
-      case ManeuverType.turnRight:
-      case ManeuverType.turnSharpRight:
+      case ManeuverType.right:
+      case ManeuverType.sharpRight:
         return Icons.turn_right;
-      case ManeuverType.turnSlightLeft:
+      case ManeuverType.slightLeft:
         return Icons.turn_slight_left;
-      case ManeuverType.turnSlightRight:
+      case ManeuverType.slightRight:
         return Icons.turn_slight_right;
       case ManeuverType.uTurn:
         return Icons.u_turn_left;
-      case ManeuverType.roundaboutEnter:
-      case ManeuverType.roundaboutExit:
+      case ManeuverType.roundabout:
         return Icons.roundabout_right;
-      case ManeuverType.forkLeft:
-        return Icons.fork_left;
-      case ManeuverType.forkRight:
-        return Icons.fork_right;
-      case ManeuverType.merge:
-        return Icons.merge;
       case ManeuverType.arrive:
         return Icons.flag;
       case ManeuverType.depart:
-      case ManeuverType.continueStraight:
+      case ManeuverType.straight:
       case ManeuverType.unknown:
         return Icons.straight;
     }

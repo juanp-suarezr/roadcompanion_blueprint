@@ -105,6 +105,9 @@ void main() {
 
   final sampleRoute = CalculatedRoute(
     routePlan: RoutePlan(
+      origin: Coordinates(5.068, -75.517),
+      destination: Coordinates(4.895, -75.322),
+      estimatedDuration: const Duration(hours: 1, minutes: 25),
       geometry: [
         Coordinates(5.068, -75.517),
         Coordinates(4.980, -75.410),
@@ -132,10 +135,7 @@ void main() {
         ),
       ],
     ),
-    estimatedDuration: const Duration(hours: 1, minutes: 25),
     summary: 'por Vía al Nevado',
-    origin: Coordinates(5.068, -75.517),
-    destination: Coordinates(4.895, -75.322),
   );
 
   setUp(() {
