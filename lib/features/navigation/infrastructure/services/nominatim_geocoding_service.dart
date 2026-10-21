@@ -28,7 +28,7 @@ class NominatimGeocodingService implements GeocodingService {
   Future<List<Destination>> search(
     String query, {
     Coordinates? proximityHint,
-    int limit = 6,
+    int limit = 10,
   }) async {
     final cleanQuery = query.trim();
     if (cleanQuery.isEmpty || cleanQuery.length < 2) {
@@ -44,9 +44,9 @@ class NominatimGeocodingService implements GeocodingService {
     };
 
     if (proximityHint != null) {
-      // Ponderar hacia el hemisferio/región del usuario
+      // Ponderar hacia el hemisferio/región del usuario (bounded=0 permite resultados globales sin descartar)
       queryParams['viewbox'] =
-          '${proximityHint.longitude - 1.5},${proximityHint.latitude + 1.5},${proximityHint.longitude + 1.5},${proximityHint.latitude - 1.5}';
+          '${proximityHint.longitude - 2.0},${proximityHint.latitude + 2.0},${proximityHint.longitude + 2.0},${proximityHint.latitude - 2.0}';
       queryParams['bounded'] = '0';
     }
 
@@ -92,10 +92,7 @@ class NominatimGeocodingService implements GeocodingService {
             ? rawName
             : displayName.split(',').first.trim();
 
-        final subtitleParts = displayName.split(',');
-        final subtitle = subtitleParts.length > 1
-            ? subtitleParts.sublist(1).take(3).map((e) => e.trim()).join(', ')
-            : displayName;
+        final subtitle = _buildSubtitle(item, displayName);
 
         final id =
             item['place_id']?.toString() ??
@@ -147,15 +144,58 @@ class NominatimGeocodingService implements GeocodingService {
       final name = data['name'] as String? ?? '';
       final displayName = data['display_name'] as String? ?? '';
 
+      final subtitle = _buildSubtitle(data, displayName);
+
       return Destination(
         id: data['place_id']?.toString() ?? 'rev_${coordinates.latitude}',
         title: name.isNotEmpty ? name : displayName.split(',').first.trim(),
-        subtitle: displayName,
+        subtitle: subtitle,
         coordinates: coordinates,
         category: data['type'] as String?,
       );
     } catch (_) {
       return null;
     }
+  }
+
+  /// Construye un subtítulo legible destacando vía, municipio y departamento/región.
+  String _buildSubtitle(Map<String, dynamic> item, String displayName) {
+    final address = item['address'] as Map<String, dynamic>?;
+    if (address != null) {
+      final locality = address['city'] ??
+          address['town'] ??
+          address['village'] ??
+          address['municipality'] ??
+          address['county'] ??
+          address['suburb'];
+      final region =
+          address['state'] ?? address['department'] ?? address['province'];
+      final road =
+          address['road'] ?? address['pedestrian'] ?? address['street'];
+
+      final parts = <String>[];
+      if (road != null && road.toString().trim().isNotEmpty) {
+        parts.add(road.toString().trim());
+      }
+      if (locality != null && locality.toString().trim().isNotEmpty) {
+        parts.add(locality.toString().trim());
+      }
+      if (region != null &&
+          region.toString().trim().isNotEmpty &&
+          region.toString().trim() != locality?.toString().trim()) {
+        parts.add(region.toString().trim());
+      }
+
+      if (parts.isNotEmpty) {
+        return parts.join(', ');
+      }
+    }
+
+    // Fallback cuando addressdetails no provee estructura detallada
+    final subtitleParts = displayName.split(',');
+    if (subtitleParts.length > 1) {
+      return subtitleParts.sublist(1).take(3).map((e) => e.trim()).join(', ');
+    }
+    return displayName;
   }
 }

@@ -28,7 +28,7 @@ class MockGeocodingService implements GeocodingService {
   Future<List<Destination>> search(
     String query, {
     Coordinates? proximityHint,
-    int limit = 6,
+    int limit = 10,
   }) async {
     return returnList;
   }
@@ -174,9 +174,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. Verificar presencia del mapa real, atribución y barra de búsqueda
+      // 1. Verificar presencia del mapa real, atribución de datos abiertos y barra de búsqueda
       expect(find.byType(RealMapWidget), findsOneWidget);
-      expect(find.text('© OpenStreetMap, © CARTO'), findsOneWidget);
+      expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
       expect(find.text('Buscar destino o municipio...'), findsOneWidget);
 
       // 2. Abrir barra de búsqueda

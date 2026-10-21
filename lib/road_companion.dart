@@ -35,6 +35,7 @@ export 'features/navigation/presentation/state/gpx_route_tracker.dart';
 export 'features/navigation/presentation/state/imported_route_state.dart';
 export 'features/navigation/presentation/widgets/active_turn_by_turn_hud.dart';
 export 'features/navigation/presentation/widgets/destination_search_sheet.dart';
+export 'features/navigation/presentation/widgets/real_map_tile_config.dart';
 export 'features/navigation/presentation/widgets/real_map_widget.dart';
 export 'features/navigation/presentation/widgets/route_overview_card.dart';
 export 'app/road_companion_app.dart';

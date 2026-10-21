@@ -9,7 +9,7 @@ abstract class GeocodingService {
   Future<List<Destination>> search(
     String query, {
     Coordinates? proximityHint,
-    int limit = 6,
+    int limit = 10,
   });
 
   /// Geocodificación inversa: obtiene el nombre legible de una coordenada.

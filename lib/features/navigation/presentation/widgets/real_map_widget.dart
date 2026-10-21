@@ -3,12 +3,16 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../../app/theme/app_typography.dart';
 import '../../../../domain/entities/coordinates.dart';
+import 'real_map_tile_config.dart';
 
 /// Visor cartográfico interactivo real basado en [FlutterMap].
 ///
-/// Proporciona renderizado de carreteras reales, calles, cruces y nombres geográficos
-/// con soporte para el tema oscuro oficial de REstelar (CartoDB Dark Matter) y claro (OpenStreetMap).
+/// Proporciona renderizado de carreteras reales, calles, cruces y nombres geográficos.
+/// Si se configura una clave CARTO (vía `--dart-define=CARTO_API_KEY=...` o [cartoApiKey]),
+/// renderiza el tema oscuro CartoDB Dark Matter. Si no se provee clave, conmuta automáticamente
+/// a las teselas estándar de OpenStreetMap para evitar marcas de agua y garantizar un mapa 100% funcional.
 class RealMapWidget extends StatelessWidget {
   final MapController mapController;
   final LatLng initialCenter;
@@ -19,6 +23,8 @@ class RealMapWidget extends StatelessWidget {
   final List<Coordinates>? routeGeometry;
   final Coordinates? destinationCoordinates;
   final VoidCallback? onRecenter;
+  final MapTileProvider tileProvider;
+  final String? cartoApiKey;
 
   const RealMapWidget({
     super.key,
@@ -34,6 +40,8 @@ class RealMapWidget extends StatelessWidget {
     this.routeGeometry,
     this.destinationCoordinates,
     this.onRecenter,
+    this.tileProvider = MapTileProvider.auto,
+    this.cartoApiKey,
   });
 
   @override
@@ -103,12 +111,53 @@ class RealMapWidget extends StatelessWidget {
       );
     }
 
-    // URL del servidor de teselas cartográficas
-    final tileUrl = isDark
-        ? 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    final tileConfig = RealMapTileConfig(
+      provider: tileProvider,
+      customCartoApiKey: cartoApiKey,
+      isDark: isDark,
+    );
 
-    final subdomains = isDark ? const ['a', 'b', 'c', 'd'] : const <String>[];
+    // Si se exigió explícitamente CARTO sin proveer clave, mostrar error explicativo
+    if (tileConfig.hasConfigurationError) {
+      return Container(
+        color: isDark ? AppColors.nightBlue : AppColors.lightBackground,
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.vpn_key_off_outlined,
+                size: 54.0,
+                color: AppColors.error,
+              ),
+              const SizedBox(height: 16.0),
+              Text(
+                'Clave de CARTO requerida',
+                style: AppTypography.sectionTitle.copyWith(
+                  color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+                ),
+              ),
+              const SizedBox(height: 10.0),
+              Text(
+                'Has configurado el proveedor de mapas CARTO pero no se detectó una clave API válida.\n\n'
+                'Para activarlo de forma segura en Android o Flutter, ejecuta o compila con:\n'
+                'flutter run --dart-define=CARTO_API_KEY=tu_clave\n\n'
+                'O selecciona el proveedor OpenStreetMap estándar (gratuito y sin marcas de agua).',
+                style: TextStyle(
+                  fontSize: 13.0,
+                  height: 1.4,
+                  color: isDark
+                      ? AppColors.secondaryTextDark
+                      : AppColors.secondaryTextLight,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Stack(
       children: [
@@ -127,10 +176,10 @@ class RealMapWidget extends StatelessWidget {
             ),
           ),
           children: [
-            // Capa de teselas cartográficas (CartoDB Dark Matter / OSM)
+            // Capa de teselas cartográficas (CartoDB Dark Matter / OSM estándar)
             TileLayer(
-              urlTemplate: tileUrl,
-              subdomains: subdomains,
+              urlTemplate: tileConfig.tileUrl,
+              subdomains: tileConfig.subdomains,
               userAgentPackageName: 'app.roadcompanion.restelar',
               tileProvider: NetworkTileProvider(),
             ),
@@ -165,16 +214,56 @@ class RealMapWidget extends StatelessWidget {
             // Capa de marcadores (Posición del rider y destino)
             MarkerLayer(markers: markers),
 
-            // Atribución de fuente de datos abierta visible
+            // Atribución permanente del proveedor de datos abierta
             SimpleAttributionWidget(
               alignment: Alignment.bottomLeft,
-              source: const Text(
-                '© OpenStreetMap, © CARTO',
-                style: TextStyle(fontSize: 9.0, color: Colors.white70),
+              source: Text(
+                tileConfig.attributionText,
+                style: const TextStyle(fontSize: 9.0, color: Colors.white70),
               ),
             ),
           ],
         ),
+
+        // Aviso discreto cuando se utiliza el fallback de OSM en modo oscuro
+        if (tileConfig.darkFallbackNotice != null)
+          Positioned(
+            top: 10.0,
+            left: 16.0,
+            right: 16.0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 6.0,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(8.0),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 14.0,
+                    color: AppColors.cyanLuminous,
+                  ),
+                  const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Text(
+                      tileConfig.darkFallbackNotice!,
+                      style: const TextStyle(
+                        fontSize: 11.0,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
         // Controles de zoom y centrado sobre el mapa
         Positioned(

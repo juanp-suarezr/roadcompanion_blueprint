@@ -85,14 +85,21 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
     });
 
     try {
-      final results = await widget.geocodingService.search(
+      final rawResults = await widget.geocodingService.search(
         query,
         proximityHint: widget.userLocation,
+        limit: 10,
+      );
+
+      final rankedResults = rankDestinations(
+        results: rawResults,
+        query: query,
+        userLocation: widget.userLocation,
       );
 
       if (!mounted) return;
       setState(() {
-        _results = results;
+        _results = rankedResults;
         _isLoading = false;
       });
     } catch (e) {
@@ -112,7 +119,7 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.82,
+        maxHeight: MediaQuery.of(context).size.height * 0.86,
       ),
       padding: EdgeInsets.only(
         top: 14.0,
@@ -315,15 +322,16 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                     ),
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14.0,
-                        vertical: 2.0,
+                        horizontal: 16.0,
+                        vertical: 6.0,
                       ),
                       leading: CircleAvatar(
+                        radius: 20.0,
                         backgroundColor: isDark
                             ? AppColors.surfaceNavy
                             : const Color(0xFFE2EDF7),
                         child: Icon(
-                          Icons.place,
+                          getDestinationCategoryIcon(dest.category),
                           size: 20.0,
                           color: isDark
                               ? AppColors.cyanLuminous
@@ -333,7 +341,7 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                       title: Text(
                         dest.title,
                         style: TextStyle(
-                          fontSize: 14.0,
+                          fontSize: 15.0,
                           fontWeight: FontWeight.w700,
                           color: isDark
                               ? AppColors.coldWhite
@@ -342,26 +350,42 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text(
-                        dest.subtitle,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: isDark
-                              ? AppColors.secondaryText
-                              : AppColors.secondaryTextLight,
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 2.0),
+                        child: Text(
+                          dest.subtitle,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: isDark
+                                ? AppColors.secondaryText
+                                : AppColors.secondaryTextLight,
+                            height: 1.25,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       trailing: distanceKm != null
-                          ? Text(
-                              '${distanceKm.toStringAsFixed(1)} km',
-                              style: TextStyle(
-                                fontSize: 11.0,
-                                fontWeight: FontWeight.w700,
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                                vertical: 4.0,
+                              ),
+                              decoration: BoxDecoration(
                                 color: isDark
-                                    ? AppColors.cyanLuminous
-                                    : AppColors.electricBlue,
+                                    ? AppColors.surfaceNavy
+                                    : const Color(0xFFE8F2FA),
+                                borderRadius: BorderRadius.circular(6.0),
+                              ),
+                              child: Text(
+                                '${distanceKm.toStringAsFixed(1)} km',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark
+                                      ? AppColors.cyanLuminous
+                                      : AppColors.electricBlue,
+                                ),
                               ),
                             )
                           : const Icon(Icons.arrow_forward_ios, size: 14.0),
@@ -371,8 +395,101 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                 },
               ),
             ),
+          if (_results.isNotEmpty) ...[
+            const SizedBox(height: 8.0),
+            Center(
+              child: Text(
+                'OpenStreetMap Nominatim • Licencia ODbL',
+                style: TextStyle(
+                  fontSize: 10.0,
+                  color: isDark
+                      ? AppColors.secondaryTextDark
+                      : AppColors.secondaryTextLight,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+/// Determina el icono temático para una categoría geográfica dada.
+IconData getDestinationCategoryIcon(String? category) {
+  if (category == null) return Icons.place;
+  switch (category.toLowerCase()) {
+    case 'fuel':
+    case 'gas_station':
+      return Icons.local_gas_station;
+    case 'restaurant':
+    case 'cafe':
+    case 'fast_food':
+      return Icons.restaurant;
+    case 'hotel':
+    case 'motel':
+    case 'guest_house':
+      return Icons.hotel;
+    case 'peak':
+    case 'volcano':
+    case 'mountain':
+      return Icons.terrain;
+    case 'city':
+    case 'town':
+    case 'village':
+    case 'municipality':
+      return Icons.location_city;
+    case 'hospital':
+    case 'clinic':
+    case 'pharmacy':
+      return Icons.local_hospital;
+    default:
+      return Icons.place;
+  }
+}
+
+/// Ordena y clasifica la lista de resultados de búsqueda:
+/// 1. Prioriza coincidencia semántica por nombre (exacto > prefijo > contenido > subtítulo).
+/// 2. Cuando se dispone de ubicación GPS válida [userLocation], desempatada por proximidad geográfica.
+/// 3. Si [userLocation] es nulo (sin GPS), conserva estrictamente el orden devuelto por el proveedor.
+List<Destination> rankDestinations({
+  required List<Destination> results,
+  required String query,
+  required Coordinates? userLocation,
+}) {
+  if (results.isEmpty) return [];
+
+  // Si no se dispone de coordenadas del usuario, respetar el orden del proveedor sin alteración
+  if (userLocation == null) {
+    return results;
+  }
+
+  final cleanQuery = query.trim().toLowerCase();
+
+  int matchTier(Destination d) {
+    final title = d.title.trim().toLowerCase();
+    if (title == cleanQuery) return 0; // Coincidencia exacta de nombre
+    if (title.startsWith(cleanQuery)) return 1; // Empieza con el término
+    if (title.contains(cleanQuery)) return 2; // Contiene el término en el título
+    final subtitle = d.subtitle.trim().toLowerCase();
+    if (subtitle.contains(cleanQuery)) return 3; // Aparece en el subtítulo (municipio, vía)
+    return 4; // Otros
+  }
+
+  final sorted = List<Destination>.from(results);
+  sorted.sort((a, b) {
+    final tierA = matchTier(a);
+    final tierB = matchTier(b);
+
+    if (tierA != tierB) {
+      return tierA.compareTo(tierB);
+    }
+
+    // A igual nivel de relevancia por nombre, priorizar el más cercano
+    final distA = userLocation.distanceTo(a.coordinates);
+    final distB = userLocation.distanceTo(b.coordinates);
+    return distA.compareTo(distB);
+  });
+
+  return sorted;
 }
