@@ -68,6 +68,45 @@ class Coordinates {
     return earthRadiusMeters * c;
   }
 
+  /// Calcula el rumbo inicial o azimut en grados decimales (0° a 360°)
+  /// desde este punto hacia otra coordenada geográfica.
+  double bearingTo(Coordinates other) {
+    final double phi1 = latitude * (pi / 180.0);
+    final double phi2 = other.latitude * (pi / 180.0);
+    final double deltaLambda = (other.longitude - longitude) * (pi / 180.0);
+
+    final double y = sin(deltaLambda) * cos(phi2);
+    final double x =
+        cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda);
+    final double theta = atan2(y, x);
+
+    return (theta * (180.0 / pi) + 360.0) % 360.0;
+  }
+
+  /// Proyecta una nueva coordenada geográfica a partir de este punto,
+  /// desplazándose [distanceMeters] en la dirección [bearingDegrees].
+  Coordinates project(double bearingDegrees, double distanceMeters) {
+    const double earthRadiusMeters = 6371000.0;
+    final double d = distanceMeters / earthRadiusMeters;
+    final double brng = bearingDegrees * (pi / 180.0);
+    final double phi1 = latitude * (pi / 180.0);
+    final double lambda1 = longitude * (pi / 180.0);
+
+    final double phi2 = asin(
+      sin(phi1) * cos(d) + cos(phi1) * sin(d) * cos(brng),
+    );
+    final double lambda2 = lambda1 +
+        atan2(
+          sin(brng) * sin(d) * cos(phi1),
+          cos(d) - sin(phi1) * sin(phi2),
+        );
+
+    final double latDeg = phi2 * (180.0 / pi);
+    final double lonDeg = ((lambda2 * (180.0 / pi) + 540.0) % 360.0) - 180.0;
+
+    return Coordinates(latDeg, lonDeg);
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../../domain/entities/coordinates.dart';
 import '../../domain/entities/gps_position.dart';
 import '../../domain/services/location_service.dart';
 
-/// Implementación real de [LocationService] utilizando el paquete oficial `geolocator`.
+/// Implementación real de [LocationService] utilizando el paquete oficial `geolocator`
+/// con soporte opcional para Foreground Service en Android.
 class GeolocatorLocationService implements LocationService {
   const GeolocatorLocationService();
 
@@ -37,15 +39,69 @@ class GeolocatorLocationService implements LocationService {
   }
 
   @override
+  Future<bool> checkBackgroundPermission() async {
+    final permission = await Geolocator.checkPermission();
+    return permission == LocationPermission.always;
+  }
+
+  @override
+  Future<LocationPermissionResult> requestBackgroundPermission() async {
+    final enabled = await isLocationServiceEnabled();
+    if (!enabled) {
+      return LocationPermissionResult.serviceDisabled;
+    }
+
+    final current = await Geolocator.checkPermission();
+    if (current == LocationPermission.always) {
+      return LocationPermissionResult.granted;
+    }
+
+    if (current == LocationPermission.denied) {
+      final req = await Geolocator.requestPermission();
+      if (req != LocationPermission.whileInUse &&
+          req != LocationPermission.always) {
+        return _mapPermission(req);
+      }
+    }
+
+    final reqBg = await Geolocator.requestPermission();
+    return _mapPermission(reqBg);
+  }
+
+  @override
   Stream<GpsPosition> getPositionStream({
     int distanceFilterMeters = 2,
     int intervalDurationMs = 1000,
+    bool enableBackgroundNotification = false,
+    String? notificationTitle,
+    String? notificationText,
   }) {
-    final settings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: distanceFilterMeters,
-      timeLimit: null,
-    );
+    LocationSettings settings;
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        enableBackgroundNotification) {
+      settings = AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: distanceFilterMeters,
+        intervalDuration: Duration(milliseconds: intervalDurationMs),
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationTitle: notificationTitle ?? 'Navegación activa — REstelar',
+          notificationText:
+              notificationText ?? 'Siguiendo ruta en segundo plano',
+          notificationIcon: const AndroidResource(
+            name: 'ic_launcher',
+            defType: 'mipmap',
+          ),
+          enableWakeLock: true,
+        ),
+      );
+    } else {
+      settings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: distanceFilterMeters,
+        timeLimit: null,
+      );
+    }
 
     return Geolocator.getPositionStream(
       locationSettings: settings,

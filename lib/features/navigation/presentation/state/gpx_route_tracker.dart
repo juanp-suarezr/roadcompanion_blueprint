@@ -58,6 +58,10 @@ class GpxRouteTracker extends ChangeNotifier {
   // Rastro reciente (últimas 40 lecturas para dibujar en el lienzo)
   final List<Coordinates> _recentTrail = [];
 
+  // Registro de posiciones con telemetría completa durante la sesión
+  final List<GpsPosition> _recordedPositions = [];
+  bool _enableBackgroundTracking = false;
+
   GpxRouteTracker({
     required this.route,
     LocationService? locationService,
@@ -111,11 +115,18 @@ class GpxRouteTracker extends ChangeNotifier {
   double get averageAccuracyMeters =>
       _validSamplesCount > 0 ? (_sumAccuracy / _validSamplesCount) : 0.0;
   List<Coordinates> get recentTrail => List.unmodifiable(_recentTrail);
+  List<GpsPosition> get recordedPositions => List.unmodifiable(_recordedPositions);
+  bool get isBackgroundEnabled => _enableBackgroundTracking;
   NavigationSession? get lastSavedSession => _lastSavedSession;
 
   /// Inicia el seguimiento satelital de la ruta previa verificación de permisos.
-  Future<bool> startTracking() async {
+  ///
+  /// Si [enableBackgroundTracking] es verdadero, solicita iniciar el servicio en primer
+  /// plano con notificación persistente para mantener la navegación activa al bloquear
+  /// el dispositivo.
+  Future<bool> startTracking({bool enableBackgroundTracking = true}) async {
     _cancelSubscriptions();
+    _enableBackgroundTracking = enableBackgroundTracking;
     _status = GpxTrackingStatus.searchingGps;
     _statusMessage = 'Verificando permisos y conectando con el sensor GPS...';
     _permissionError = null;
@@ -160,15 +171,21 @@ class GpxRouteTracker extends ChangeNotifier {
     _resetGpsTimeout();
 
     // 3. Suscripción única al flujo de posiciones
-    _positionSubscription = _locationService.getPositionStream().listen(
-      _handleNewPosition,
-      onError: (error) {
-        _status = GpxTrackingStatus.gpsLost;
-        _statusMessage = 'Error en el proveedor de GPS: $error';
-        notifyListeners();
-      },
-      cancelOnError: false,
-    );
+    _positionSubscription = _locationService
+        .getPositionStream(
+          enableBackgroundNotification: enableBackgroundTracking,
+          notificationTitle: 'REstelar — Ruta activa: ${route.name}',
+          notificationText: 'Siguiendo ruta en segundo plano para motocicleta',
+        )
+        .listen(
+          _handleNewPosition,
+          onError: (error) {
+            _status = GpxTrackingStatus.gpsLost;
+            _statusMessage = 'Error en el proveedor de GPS: $error';
+            notifyListeners();
+          },
+          cancelOnError: false,
+        );
 
     return true;
   }
@@ -262,6 +279,12 @@ class GpxRouteTracker extends ChangeNotifier {
     _recentTrail.add(pos.coordinates);
     if (_recentTrail.length > 50) {
       _recentTrail.removeAt(0);
+    }
+
+    // Registrar posición completa con telemetría para historial de sesión
+    _recordedPositions.add(pos);
+    if (_recordedPositions.length > 5000) {
+      _recordedPositions.removeAt(0);
     }
 
     // 3. Proyectar sobre la geometría de la ruta con RouteProgressCalculator

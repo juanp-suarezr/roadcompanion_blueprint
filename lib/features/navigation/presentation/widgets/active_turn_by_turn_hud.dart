@@ -11,6 +11,8 @@ class ActiveTurnByTurnHud extends StatelessWidget {
   final GpxRouteTracker tracker;
   final Maneuver? currentManeuver;
   final double? distanceToManeuverMeters;
+  final bool isVoiceMuted;
+  final VoidCallback? onToggleVoiceMute;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onStop;
@@ -20,6 +22,8 @@ class ActiveTurnByTurnHud extends StatelessWidget {
     required this.tracker,
     this.currentManeuver,
     this.distanceToManeuverMeters,
+    this.isVoiceMuted = false,
+    this.onToggleVoiceMute,
     required this.onPause,
     required this.onResume,
     required this.onStop,
@@ -122,6 +126,24 @@ class ActiveTurnByTurnHud extends StatelessWidget {
               ],
             ),
           ),
+          if (onToggleVoiceMute != null) ...[
+            const SizedBox(width: 8.0),
+            IconButton(
+              tooltip: isVoiceMuted ? 'Activar voz' : 'Silenciar voz',
+              icon: Icon(
+                isVoiceMuted
+                    ? Icons.volume_off_rounded
+                    : Icons.volume_up_rounded,
+                color: isVoiceMuted
+                    ? AppColors.silver
+                    : (isDark
+                        ? AppColors.cyanLuminous
+                        : AppColors.surfaceNavy),
+                size: 26.0,
+              ),
+              onPressed: onToggleVoiceMute,
+            ),
+          ],
         ],
       ),
     );

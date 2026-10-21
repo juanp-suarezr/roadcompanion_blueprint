@@ -21,6 +21,7 @@ class RealMapWidget extends StatelessWidget {
   final double? riderHeading;
   final double? accuracyMeters;
   final List<Coordinates>? routeGeometry;
+  final List<List<Coordinates>>? alternativeGeometries;
   final Coordinates? destinationCoordinates;
   final VoidCallback? onRecenter;
   final MapTileProvider tileProvider;
@@ -38,6 +39,7 @@ class RealMapWidget extends StatelessWidget {
     this.riderHeading,
     this.accuracyMeters,
     this.routeGeometry,
+    this.alternativeGeometries,
     this.destinationCoordinates,
     this.onRecenter,
     this.tileProvider = MapTileProvider.auto,
@@ -184,7 +186,28 @@ class RealMapWidget extends StatelessWidget {
               tileProvider: NetworkTileProvider(),
             ),
 
-            // Capa de polilíneas de ruta calculada o GPX
+            // Capa de polilíneas de rutas alternativas (estilo atenuado/secundario)
+            if (alternativeGeometries != null &&
+                alternativeGeometries!.isNotEmpty) ...[
+              PolylineLayer(
+                polylines: alternativeGeometries!
+                    .where((geom) => geom.isNotEmpty)
+                    .map(
+                      (geom) => Polyline(
+                        points: geom
+                            .map((c) => LatLng(c.latitude, c.longitude))
+                            .toList(),
+                        strokeWidth: 4.5,
+                        color: isDark
+                            ? const Color(0xFF627D98).withValues(alpha: 0.75)
+                            : const Color(0xFF829AB1).withValues(alpha: 0.8),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+
+            // Capa de polilíneas de ruta calculada o GPX principal seleccionada
             if (polylinePoints.isNotEmpty) ...[
               // Sombra / contorno de alto contraste
               PolylineLayer(

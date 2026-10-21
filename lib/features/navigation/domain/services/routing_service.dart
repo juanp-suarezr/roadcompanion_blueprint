@@ -3,11 +3,20 @@ import '../entities/calculated_route.dart';
 
 /// Contrato para el motor de cálculo y enrutamiento vial en tiempo real.
 abstract class RoutingService {
-  /// Calcula la ruta óptima entre [origin] y [destination].
+  /// Calcula la ruta óptima principal entre [origin] y [destination].
   ///
   /// Retorna un [CalculatedRoute] con geometría, maniobras y tiempo estimado,
   /// o lanza una excepción en caso de error de red o ruta inalcanzable.
   Future<CalculatedRoute> calculateRoute({
+    required Coordinates origin,
+    required Coordinates destination,
+  });
+
+  /// Calcula la ruta principal junto con alternativas reales (hasta 3 opciones en total).
+  ///
+  /// Si el proveedor devuelve únicamente una ruta viable, retorna una lista con una sola ruta.
+  /// Nunca inventa alternativas modificando artificialmente geometrías.
+  Future<List<CalculatedRoute>> calculateRoutesWithAlternatives({
     required Coordinates origin,
     required Coordinates destination,
   });

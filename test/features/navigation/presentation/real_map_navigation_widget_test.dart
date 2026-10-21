@@ -13,6 +13,7 @@ import 'package:road_companion/features/navigation/domain/entities/navigation_se
 import 'package:road_companion/features/navigation/domain/repositories/session_repository.dart';
 import 'package:road_companion/features/navigation/domain/services/geocoding_service.dart';
 import 'package:road_companion/features/navigation/domain/services/location_service.dart';
+import 'package:road_companion/features/navigation/domain/services/route_integrity_validator.dart';
 import 'package:road_companion/features/navigation/domain/services/routing_service.dart';
 import 'package:road_companion/features/navigation/presentation/navigation_screen.dart';
 import 'package:road_companion/features/navigation/presentation/state/imported_route_state.dart';
@@ -34,12 +35,22 @@ class MockGeocodingService implements GeocodingService {
   }
 
   @override
+  Future<List<Destination>> searchNearbyCategory({
+    required String category,
+    required Coordinates center,
+    int limit = 15,
+  }) async {
+    return returnList;
+  }
+
+  @override
   Future<Destination?> reverseGeocode(Coordinates coordinates) async => null;
 }
 
 class MockRoutingService implements RoutingService {
   final CalculatedRoute routeToReturn;
-  MockRoutingService(this.routeToReturn);
+  final List<CalculatedRoute>? routesToReturn;
+  MockRoutingService(this.routeToReturn, {this.routesToReturn});
 
   @override
   Future<CalculatedRoute> calculateRoute({
@@ -47,6 +58,14 @@ class MockRoutingService implements RoutingService {
     required Coordinates destination,
   }) async {
     return routeToReturn;
+  }
+
+  @override
+  Future<List<CalculatedRoute>> calculateRoutesWithAlternatives({
+    required Coordinates origin,
+    required Coordinates destination,
+  }) async {
+    return routesToReturn ?? [routeToReturn];
   }
 }
 
@@ -67,9 +86,19 @@ class MockMapLocationService implements LocationService {
       LocationPermissionResult.granted;
 
   @override
+  Future<bool> checkBackgroundPermission() async => true;
+
+  @override
+  Future<LocationPermissionResult> requestBackgroundPermission() async =>
+      LocationPermissionResult.granted;
+
+  @override
   Stream<GpsPosition> getPositionStream({
     int distanceFilterMeters = 2,
     int intervalDurationMs = 1000,
+    bool enableBackgroundNotification = false,
+    String? notificationTitle,
+    String? notificationText,
   }) => _controller.stream;
 
   void dispose() => _controller.close();
@@ -245,6 +274,180 @@ void main() {
 
       // Verificar que la sesión se guardó en el repositorio
       expect(mockSessionRepo.sessions.length, equals(1));
+    },
+  );
+
+  testWidgets(
+    'Permite alternar entre rutas alternativas y navegar con la alternativa seleccionada',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final route1 = sampleRoute.copyWith(
+        routeName: 'Ruta 1',
+        isFastest: true,
+        summary: 'por Vía al Nevado Principal',
+      );
+
+      final route2 = CalculatedRoute(
+        routeName: 'Ruta 2',
+        summary: 'por Paso Letras Alterno',
+        isShortest: true,
+        distanceDiffKm: null,
+        durationDiff: const Duration(minutes: 15),
+        routePlan: RoutePlan(
+          origin: Coordinates(5.068, -75.517),
+          destination: Coordinates(4.895, -75.322),
+          estimatedDuration: const Duration(hours: 1, minutes: 40),
+          geometry: [
+            Coordinates(5.068, -75.517),
+            Coordinates(5.010, -75.450),
+            Coordinates(4.895, -75.322),
+          ],
+          totalDistanceMeters: 41500.0,
+          maneuvers: [
+            Maneuver(
+              instructionText: 'Inicia por Letras Alterno',
+              type: ManeuverType.depart,
+              location: Coordinates(5.068, -75.517),
+              distanceMeters: 10000.0,
+            ),
+            Maneuver(
+              instructionText: 'Llegada al destino',
+              type: ManeuverType.arrive,
+              location: Coordinates(4.895, -75.322),
+              distanceMeters: 0.0,
+            ),
+          ],
+        ),
+      );
+
+      final multiRouteService = MockRoutingService(
+        route1,
+        routesToReturn: [route1, route2],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ImportedRouteScope(
+            routeState: ImportedRouteState(),
+            child: NavigationScreen(
+              locationService: mockLocationService,
+              sessionRepository: mockSessionRepo,
+              geocodingService: mockGeocodingService,
+              routingService: multiRouteService,
+              initialMode: NavigationScreenMode.realMap,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Abrir búsqueda y seleccionar destino
+      await tester.tap(find.text('Buscar destino o municipio...'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Nevado');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Nevado del Ruiz'));
+      await tester.pumpAndSettle();
+
+      // Verificar que se listan ambas rutas disponibles
+      expect(find.text('RUTAS DISPONIBLES (2)'), findsOneWidget);
+      expect(find.text('Ruta 1'), findsOneWidget);
+      expect(find.text('Ruta 2'), findsOneWidget);
+      expect(find.text('por Vía al Nevado Principal'), findsOneWidget);
+      expect(find.text('INICIAR RUTA 1'), findsOneWidget);
+
+      // Tocar en "Ruta 2" para seleccionarla
+      await tester.tap(find.text('Ruta 2'));
+      await tester.pumpAndSettle();
+
+      // Verificar que ahora se muestra la información de la Ruta 2
+      expect(find.text('por Paso Letras Alterno'), findsOneWidget);
+      expect(find.text('41.5 km'), findsOneWidget);
+      expect(find.text('1 h 40 min'), findsOneWidget);
+      expect(find.text('INICIAR RUTA 2'), findsOneWidget);
+
+      // Iniciar navegación con la Ruta 2 seleccionada
+      await tester.tap(find.text('INICIAR RUTA 2'));
+      await tester.pump();
+
+      // Emitir ubicación GPS
+      mockLocationService.emit(
+        GpsPosition(
+          coordinates: Coordinates(5.068, -75.517),
+          accuracyMeters: 5.0,
+          speedMps: 15.0,
+          timestamp: DateTime.now(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verificar que el HUD activo se encendió
+      expect(find.byType(ActiveTurnByTurnHud), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Muestra advertencia explícita de cerrojo/acceso restringido y distintivo PRIVADA en la interfaz',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final restrictedRoute = sampleRoute.copyWith(
+        routeName: 'Ruta 1',
+        validation: const RouteValidationResult(
+          status: RouteValidationStatus.confirmedRestrictedAccess,
+          hasRestrictedAccess: true,
+          warnings: [
+            'Acceso restringido o vía privada confirmada (barrier=gate (portón/cerrojo)). Esta vía no está disponible para libre tránsito público.',
+          ],
+        ),
+      );
+
+      final restrictedRoutingService = MockRoutingService(
+        restrictedRoute,
+        routesToReturn: [restrictedRoute],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ImportedRouteScope(
+            routeState: ImportedRouteState(),
+            child: NavigationScreen(
+              locationService: mockLocationService,
+              sessionRepository: mockSessionRepo,
+              geocodingService: mockGeocodingService,
+              routingService: restrictedRoutingService,
+              initialMode: NavigationScreenMode.realMap,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Buscar destino o municipio...'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Nevado');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Nevado del Ruiz'));
+      await tester.pumpAndSettle();
+
+      // Verificar que aparece el mensaje de advertencia de acceso restringido
+      expect(find.text('Acceso restringido / Vía privada con cerrojo'), findsOneWidget);
+      expect(
+        find.textContaining('Acceso restringido o vía privada confirmada'),
+        findsOneWidget,
+      );
+      expect(find.text('INICIAR RUTA (ACCESO RESTRINGIDO)'), findsOneWidget);
     },
   );
 }

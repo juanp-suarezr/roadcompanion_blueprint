@@ -12,22 +12,35 @@ import '../domain/entities/calculated_route.dart';
 import '../domain/entities/destination.dart';
 import '../domain/entities/gps_position.dart';
 import '../domain/entities/imported_gpx_route.dart';
+import '../domain/entities/navigation_issue_report.dart';
+import '../domain/entities/saved_favorite_route.dart';
 import '../domain/repositories/session_repository.dart';
 import '../domain/services/geocoding_service.dart';
 import '../domain/services/location_service.dart';
+import '../domain/services/navigation_diagnostic_logger.dart';
 import '../domain/services/routing_service.dart';
+import '../domain/services/smart_navigation_memory_service.dart';
+import '../domain/services/voice_navigation_service.dart';
+import '../domain/services/navigation_maneuver_engine.dart';
 import '../infrastructure/services/geolocator_location_service.dart';
 import '../infrastructure/services/nominatim_geocoding_service.dart';
 import '../infrastructure/services/osrm_routing_service.dart';
+import '../infrastructure/services/flutter_tts_voice_navigation_service.dart';
+import '../domain/entities/gpx_tracking_status.dart';
+import '../domain/services/tripper_ble_service.dart';
+import '../infrastructure/services/flutter_blue_plus_tripper_service.dart';
+import 'screens/tripper_diagnostic_screen.dart';
 import 'demo_navigation_controller.dart';
 import 'state/gpx_route_tracker.dart';
 import 'state/imported_route_state.dart';
 import 'widgets/active_turn_by_turn_hud.dart';
 import 'widgets/destination_search_sheet.dart';
+import 'widgets/favorite_routes_sheet.dart';
 import 'widgets/gpx_live_tracking_panel.dart';
 import 'widgets/gpx_route_card.dart';
 import 'widgets/gpx_track_view.dart';
 import 'widgets/maneuver_display.dart';
+import 'widgets/navigation_report_sheet.dart';
 import 'widgets/progress_stats_bar.dart';
 import 'widgets/real_map_widget.dart';
 import 'widgets/route_overview_card.dart';
@@ -61,6 +74,10 @@ class NavigationScreen extends StatefulWidget {
   final RouteProgressCalculator? calculator;
   final GeocodingService? geocodingService;
   final RoutingService? routingService;
+  final SmartNavigationMemoryService? memoryService;
+  final TripperBleService? tripperBleService;
+  final VoiceNavigationService? voiceService;
+  final NavigationManeuverEngine? maneuverEngine;
   final NavigationScreenMode? initialMode;
 
   const NavigationScreen({
@@ -71,6 +88,10 @@ class NavigationScreen extends StatefulWidget {
     this.calculator,
     this.geocodingService,
     this.routingService,
+    this.memoryService,
+    this.tripperBleService,
+    this.voiceService,
+    this.maneuverEngine,
     this.initialMode,
   });
 
@@ -85,6 +106,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
   late final LocationService _locationService;
   late final GeocodingService _geocodingService;
   late final RoutingService _routingService;
+  late final SmartNavigationMemoryService _memoryService;
+  late final TripperBleService _tripperBleService;
+  late final VoiceNavigationService _voiceService;
+  late final NavigationManeuverEngine _maneuverEngine;
 
   ImportedRouteState? _localRouteState;
   late NavigationScreenMode _currentMode;
@@ -92,6 +117,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   // Estado del mapa y enrutamiento en tiempo real
   Destination? _selectedDestination;
   CalculatedRoute? _calculatedRoute;
+  List<CalculatedRoute> _availableRoutes = const [];
+  int _selectedRouteIndex = 0;
   bool _isCalculatingRoute = false;
   String? _routeErrorMessage;
   bool _isNavigatingCalculatedRoute = false;
@@ -112,10 +139,18 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _demoController = DemoNavigationController();
     _mapController = MapController();
 
+    _memoryService = widget.memoryService ?? SmartNavigationMemoryService();
+    _memoryService.load();
+
     _locationService =
         widget.locationService ?? const GeolocatorLocationService();
     _geocodingService = widget.geocodingService ?? NominatimGeocodingService();
-    _routingService = widget.routingService ?? OsrmRoutingService();
+    _routingService = widget.routingService ??
+        OsrmRoutingService(memoryService: _memoryService);
+    _tripperBleService =
+        widget.tripperBleService ?? FlutterBluePlusTripperService();
+    _voiceService = widget.voiceService ?? FlutterTtsVoiceNavigationService();
+    _maneuverEngine = widget.maneuverEngine ?? NavigationManeuverEngine();
 
     _currentMode = widget.initialMode ?? NavigationScreenMode.realMap;
 
@@ -173,6 +208,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   @override
   void dispose() {
+    _activeTracker?.removeListener(_onActiveTrackerProgress);
+    _voiceService.dispose();
     _gpsLocationSubscription?.cancel();
     _demoController.dispose();
     _activeTracker?.dispose();
@@ -199,28 +236,49 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _isCalculatingRoute = true;
       _routeErrorMessage = null;
       _calculatedRoute = null;
+      _availableRoutes = const [];
+      _selectedRouteIndex = 0;
       _isNavigatingCalculatedRoute = false;
     });
 
     // Origen: ubicación actual del usuario o fallback céntrico
-    Coordinates origin =
+    final Coordinates origin =
         _currentRiderCoordinates ?? Coordinates(5.0689, -75.5174);
 
+    NavigationDiagnosticLogger.logDestinationSelected(
+      destination: destination,
+      origin: origin,
+    );
+
     try {
-      final route = await _routingService.calculateRoute(
+      final routes = await _routingService.calculateRoutesWithAlternatives(
         origin: origin,
         destination: destination.coordinates,
       );
 
       if (!mounted) return;
+      if (routes.isEmpty) {
+        setState(() {
+          _isCalculatingRoute = false;
+          _routeErrorMessage =
+              'No se encontraron rutas viales disponibles hacia "${destination.title}".';
+        });
+        return;
+      }
+
       setState(() {
-        _calculatedRoute = route;
+        _availableRoutes = routes;
+        _selectedRouteIndex = 0;
+        _calculatedRoute = routes.first;
         _isCalculatingRoute = false;
         _currentMode = NavigationScreenMode.realMap;
       });
 
-      // Centrar el mapa en el trazado calculado
-      _fitMapToCoordinates(route.geometry);
+      // Centrar el mapa en todos los trazados calculados para que el usuario pueda compararlos
+      final allCoords = routes.expand((r) => r.geometry).toList();
+      _fitMapToCoordinates(
+        allCoords.isNotEmpty ? allCoords : routes.first.geometry,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -228,6 +286,109 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _routeErrorMessage =
             'No se pudo calcular la ruta vial hacia "${destination.title}". Verifica tu conexión.';
       });
+    }
+  }
+
+  void _selectRouteAlternative(int index) {
+    if (index < 0 || index >= _availableRoutes.length) return;
+    setState(() {
+      _selectedRouteIndex = index;
+      _calculatedRoute = _availableRoutes[index];
+    });
+    // Ajustar encuadre al cambiar de ruta seleccionada
+    _fitMapToCoordinates(_availableRoutes[index].geometry);
+  }
+
+  Future<void> _openFavoriteRoutes() async {
+    final fav = await FavoriteRoutesSheet.show(
+      context,
+      memoryService: _memoryService,
+    );
+    if (fav != null && mounted) {
+      final destination = Destination(
+        id: 'fav_${fav.id}',
+        title: fav.destinationTitle,
+        subtitle: fav.notes ??
+            'Ruta guardada (${fav.distanceKm.toStringAsFixed(1)} km, ${fav.formattedDuration})',
+        coordinates: fav.destination,
+      );
+      _selectDestinationAndRoute(destination);
+    }
+  }
+
+  Future<void> _handleSaveFavoriteRoute(
+    CalculatedRoute route,
+    Destination destination,
+  ) async {
+    final originCoord = _currentRiderCoordinates ?? route.origin;
+    final fav = SavedFavoriteRoute(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: destination.title,
+      origin: originCoord,
+      originTitle: 'Mi ubicación',
+      destination: destination.coordinates,
+      destinationTitle: destination.title,
+      savedAt: DateTime.now(),
+      distanceKm: route.totalDistanceKm,
+      estimatedDuration: route.estimatedDuration,
+      notes: route.summary,
+      preferences: {
+        'hasTolls': false,
+        'hasUnpaved': route.validation.warnings.any(
+          (w) => w.toLowerCase().contains('destapad'),
+        ),
+      },
+    );
+    await _memoryService.saveFavoriteRoute(fav);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Ruta a "${destination.title}" guardada en tus favoritas.',
+          ),
+          backgroundColor: AppColors.cyanLuminous,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleReportRoadIssue({
+    CalculatedRoute? route,
+    Coordinates? initialLocation,
+  }) async {
+    final loc = initialLocation ??
+        _currentRiderCoordinates ??
+        (route != null && route.geometry.isNotEmpty
+            ? route.geometry.first
+            : Coordinates(4.833360, -75.672461));
+
+    final report = await NavigationReportSheet.show(
+      context,
+      location: loc,
+      initialRoadSegment: route?.summary,
+      memoryService: _memoryService,
+    );
+
+    if (report != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Reporte vial "${report.typeLabel}" registrado en la memoria de REstelar.',
+          ),
+          backgroundColor: AppColors.cardNavy,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Si el reporte es un portón cerrado o destino inaccesible confirmado y coincide con la ruta activa, recalcular
+      if (report.status == ReportVerificationStatus.confirmed &&
+          (report.type == NavigationIssueType.lockedGate ||
+              report.type == NavigationIssueType.inaccessibleDestination)) {
+        if (_selectedDestination != null) {
+          _selectDestinationAndRoute(_selectedDestination!);
+        }
+      }
     }
   }
 
@@ -244,6 +405,31 @@ class _NavigationScreenState extends State<NavigationScreen> {
     } catch (_) {}
   }
 
+  void _onActiveTrackerProgress() {
+    if (!_isNavigatingCalculatedRoute || _activeTracker == null) return;
+
+    final pos = _activeTracker!.currentPosition;
+    if (pos != null) {
+      final step = _maneuverEngine.resolveStep(
+        currentCoordinates: pos.coordinates,
+      );
+      if (step != null) {
+        _voiceService.processManeuverGuidance(
+          maneuverIndex: step.maneuverIndex,
+          maneuver: step.activeManeuver,
+          distanceToManeuverMeters: step.distanceToManeuverMeters,
+          currentSpeedKmh: pos.speedKmh ?? 0.0,
+        );
+      }
+    }
+
+    if (_activeTracker!.status == GpxTrackingStatus.offRoute) {
+      _voiceService.announceOffRoute();
+    } else if (_activeTracker!.status == GpxTrackingStatus.completed) {
+      _voiceService.announceDestinationReached();
+    }
+  }
+
   Future<void> _startCalculatedRouteNavigation() async {
     if (_calculatedRoute == null) return;
 
@@ -251,6 +437,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _calculatedRoute!,
     );
 
+    _activeTracker?.removeListener(_onActiveTrackerProgress);
     _activeTracker?.dispose();
     _activeTracker = GpxRouteTracker(
       route: gpxCompatible,
@@ -259,6 +446,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
       sessionRepository: widget.sessionRepository,
     );
 
+    _maneuverEngine.setRoute(_calculatedRoute!);
+    _voiceService.resetGuidance();
+    _activeTracker!.addListener(_onActiveTrackerProgress);
+
     final started = await _activeTracker!.startTracking();
     if (!mounted) return;
 
@@ -266,6 +457,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
       setState(() {
         _isNavigatingCalculatedRoute = true;
       });
+      _voiceService.speak(
+        'Iniciando navegación hacia ${_selectedDestination?.title ?? "tu destino"}.',
+      );
     } else if (_activeTracker!.permissionError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -277,10 +471,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   void _cancelCalculatedRoute() {
+    _activeTracker?.removeListener(_onActiveTrackerProgress);
+    _voiceService.stop();
+    _voiceService.resetGuidance();
     _activeTracker?.stopTracking();
     setState(() {
       _selectedDestination = null;
       _calculatedRoute = null;
+      _availableRoutes = const [];
+      _selectedRouteIndex = 0;
       _isNavigatingCalculatedRoute = false;
       _routeErrorMessage = null;
     });
@@ -332,7 +531,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   Future<void> _onStopSession(GpxRouteTracker tracker) async {
+    _activeTracker?.removeListener(_onActiveTrackerProgress);
     await tracker.stopTracking();
+    await _voiceService.stop();
+    _voiceService.resetGuidance();
     if (!mounted) return;
 
     if (tracker.lastSavedSession != null) {
@@ -355,22 +557,24 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
+  NavigationManeuverStep? _resolveCurrentManeuverStep() {
+    if (_calculatedRoute == null) return null;
+    final pos = _currentRiderCoordinates ??
+        _activeTracker?.currentPosition?.coordinates;
+    if (pos == null) return null;
+    return _maneuverEngine.resolveStep(currentCoordinates: pos);
+  }
+
   Maneuver? _resolveActiveManeuver() {
+    final step = _resolveCurrentManeuverStep();
+    if (step != null) {
+      return step.activeManeuver;
+    }
     if (_calculatedRoute == null ||
         _calculatedRoute!.routePlan.maneuvers.isEmpty) {
       return null;
     }
-    final maneuvers = _calculatedRoute!.routePlan.maneuvers;
-    // Si el tracker reporta segmento, aproximar la maniobra actual
-    final segmentIdx =
-        _activeTracker?.currentProgress?.closestSegmentIndex ?? 0;
-    final maneuverIdx =
-        (segmentIdx /
-                (trackerRouteLength == 0 ? 1 : trackerRouteLength) *
-                maneuvers.length)
-            .floor()
-            .clamp(0, maneuvers.length - 1);
-    return maneuvers[maneuverIdx];
+    return _calculatedRoute!.routePlan.maneuvers.first;
   }
 
   int get trackerRouteLength =>
@@ -405,6 +609,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 onPressed: routeState.isLoading
                     ? null
                     : () => _handleImportGpx(routeState),
+              ),
+              IconButton(
+                tooltip: 'Laboratorio Tripper Pod & GPS',
+                icon: const Icon(
+                  Icons.two_wheeler_rounded,
+                  color: AppColors.primaryGold,
+                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TripperDiagnosticScreen(
+                        activeTracker: _activeTracker,
+                        bleService: _tripperBleService,
+                      ),
+                    ),
+                  );
+                },
               ),
               const SizedBox(width: 8.0),
             ],
@@ -475,6 +696,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   Widget _buildRealMapContent(bool isDark, ImportedRouteState routeState) {
     final activeGeometry = _calculatedRoute?.geometry;
+    final unselectedGeometries = _availableRoutes
+        .asMap()
+        .entries
+        .where((entry) => entry.key != _selectedRouteIndex)
+        .map((entry) => entry.value.geometry)
+        .toList();
 
     return Stack(
       children: [
@@ -492,6 +719,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
             riderHeading: _riderHeading,
             accuracyMeters: _accuracyMeters,
             routeGeometry: activeGeometry,
+            alternativeGeometries: unselectedGeometries,
             destinationCoordinates: _selectedDestination?.coordinates,
             onRecenter: _recenterMapOnUser,
           ),
@@ -533,7 +761,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
             child: _buildGpxErrorCard(routeState, isDark),
           ),
 
-        // 5. Tarjeta de resumen de ruta calculada (antes de iniciar navegación)
+        // 5. Tarjeta de resumen y selección de alternativas (antes de iniciar navegación)
         if (_calculatedRoute != null &&
             _selectedDestination != null &&
             !_isNavigatingCalculatedRoute)
@@ -543,9 +771,25 @@ class _NavigationScreenState extends State<NavigationScreen> {
             right: 16.0,
             child: RouteOverviewCard(
               destination: _selectedDestination!,
-              route: _calculatedRoute!,
+              routes: _availableRoutes.isNotEmpty
+                  ? _availableRoutes
+                  : [_calculatedRoute!],
+              selectedRouteIndex: _selectedRouteIndex,
+              onSelectRoute: _selectRouteAlternative,
               onStartNavigation: _startCalculatedRouteNavigation,
               onCancel: _cancelCalculatedRoute,
+              onSaveFavorite: () {
+                final currentRoute = _availableRoutes.isNotEmpty
+                    ? _availableRoutes[_selectedRouteIndex]
+                    : _calculatedRoute!;
+                _handleSaveFavoriteRoute(currentRoute, _selectedDestination!);
+              },
+              onReportIssue: () {
+                final currentRoute = _availableRoutes.isNotEmpty
+                    ? _availableRoutes[_selectedRouteIndex]
+                    : _calculatedRoute!;
+                _handleReportRoadIssue(route: currentRoute);
+              },
             ),
           ),
 
@@ -554,17 +798,27 @@ class _NavigationScreenState extends State<NavigationScreen> {
           ListenableBuilder(
             listenable: _activeTracker!,
             builder: (context, _) {
-              final activeManeuver = _resolveActiveManeuver();
+              final step = _resolveCurrentManeuverStep();
+              final activeManeuver =
+                  step?.activeManeuver ?? _resolveActiveManeuver();
+              final distanceMeters = step?.distanceToManeuverMeters ??
+                  (_activeTracker!.remainingDistanceMeters > 0
+                      ? (_activeTracker!.remainingDistanceMeters / 10).clamp(
+                          50.0,
+                          500.0,
+                        )
+                      : 0.0);
+
               return ActiveTurnByTurnHud(
                 tracker: _activeTracker!,
                 currentManeuver: activeManeuver,
-                distanceToManeuverMeters:
-                    _activeTracker!.remainingDistanceMeters > 0
-                    ? (_activeTracker!.remainingDistanceMeters / 10).clamp(
-                        50.0,
-                        500.0,
-                      )
-                    : 0.0,
+                distanceToManeuverMeters: distanceMeters,
+                isVoiceMuted: _voiceService.isMuted,
+                onToggleVoiceMute: () {
+                  setState(() {
+                    _voiceService.toggleMute();
+                  });
+                },
                 onPause: _activeTracker!.pauseTracking,
                 onResume: _activeTracker!.resumeTracking,
                 onStop: () => _onStopSession(_activeTracker!),
@@ -572,23 +826,64 @@ class _NavigationScreenState extends State<NavigationScreen> {
             },
           ),
 
-        // 7. Botón flotante para importar ruta GPX
+        // Botón flotante para reportar problema vial durante la navegación activa
+        if (_isNavigatingCalculatedRoute)
+          Positioned(
+            right: 16.0,
+            bottom: 215.0,
+            child: FloatingActionButton.small(
+              heroTag: 'report_issue_btn',
+              backgroundColor: isDark ? AppColors.cardNavy : AppColors.whiteSurface,
+              foregroundColor: AppColors.warning,
+              tooltip: 'Reportar incidencia vial o portón cerrado',
+              onPressed: () => _handleReportRoadIssue(
+                route: _calculatedRoute,
+                initialLocation: _currentRiderCoordinates,
+              ),
+              child: const Icon(Icons.report_problem_outlined, size: 20.0),
+            ),
+          ),
+
+        // 7. Botones flotantes inferiores: Importar ruta GPX y Rutas Favoritas
         if (!_isNavigatingCalculatedRoute && _calculatedRoute == null)
           Positioned(
             left: 16.0,
             bottom: 24.0,
-            child: Material(
-              color: isDark ? AppColors.nightBlue : AppColors.whiteSurface,
-              elevation: 4.0,
-              borderRadius: BorderRadius.circular(24.0),
-              child: FilledButton.tonalIcon(
-                onPressed: () => _handleImportGpx(routeState),
-                icon: const Icon(Icons.file_upload_outlined, size: 16.0),
-                label: const Text('Importar ruta GPX'),
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Material(
+                  color: isDark ? AppColors.nightBlue : AppColors.whiteSurface,
+                  elevation: 4.0,
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _handleImportGpx(routeState),
+                    icon: const Icon(Icons.file_upload_outlined, size: 16.0),
+                    label: const Text('Importar ruta GPX'),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8.0),
+                Material(
+                  color: isDark ? AppColors.nightBlue : AppColors.whiteSurface,
+                  elevation: 4.0,
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: FilledButton.tonalIcon(
+                    onPressed: _openFavoriteRoutes,
+                    icon: const Icon(
+                      Icons.star_rounded,
+                      size: 18.0,
+                      color: AppColors.cyanLuminous,
+                    ),
+                    label: const Text('Favoritas'),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
       ],

@@ -22,6 +22,7 @@ export 'features/navigation/domain/repositories/gpx_route_repository.dart';
 export 'features/navigation/domain/repositories/session_repository.dart';
 export 'features/navigation/domain/services/geocoding_service.dart';
 export 'features/navigation/domain/services/location_service.dart';
+export 'features/navigation/domain/services/route_integrity_validator.dart';
 export 'features/navigation/domain/services/routing_service.dart';
 export 'features/navigation/infrastructure/parsers/gpx_parser.dart';
 export 'features/navigation/infrastructure/repositories/local_gpx_route_repository.dart';

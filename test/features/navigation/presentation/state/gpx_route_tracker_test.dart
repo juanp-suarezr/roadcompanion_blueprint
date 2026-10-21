@@ -37,9 +37,19 @@ class FakeLocationService implements LocationService {
       permissionResult;
 
   @override
+  Future<bool> checkBackgroundPermission() async => true;
+
+  @override
+  Future<LocationPermissionResult> requestBackgroundPermission() async =>
+      permissionResult;
+
+  @override
   Stream<GpsPosition> getPositionStream({
     int distanceFilterMeters = 2,
     int intervalDurationMs = 1000,
+    bool enableBackgroundNotification = false,
+    String? notificationTitle,
+    String? notificationText,
   }) {
     return _controller.stream.transform(
       StreamTransformer<GpsPosition, GpsPosition>.fromHandlers(
@@ -417,6 +427,45 @@ void main() {
 
         // No procesa nada tras detener
         expect(tracker.validSamplesCount, equals(1));
+
+        tracker.dispose();
+      },
+    );
+
+    test(
+      'startTracking con enableBackgroundTracking activa bandera y guarda telemetría en recordedPositions',
+      () async {
+        final fakeLocationService = FakeLocationService();
+        final sessionRepo = FakeSessionRepository();
+
+        final tracker = GpxRouteTracker(
+          route: testRoute,
+          locationService: fakeLocationService,
+          sessionRepository: sessionRepo,
+          clock: () => simulatedTime,
+        );
+
+        final started = await tracker.startTracking(enableBackgroundTracking: true);
+        expect(started, isTrue);
+        expect(tracker.isBackgroundEnabled, isTrue);
+
+        final pos = GpsPosition(
+          coordinates: Coordinates(5.0000, -75.0000),
+          accuracyMeters: 4.5,
+          speedMps: 12.0,
+          timestamp: simulatedTime,
+        );
+
+        fakeLocationService.emitPosition(pos);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(tracker.recordedPositions.length, equals(1));
+        expect(tracker.recordedPositions.first.accuracyMeters, equals(4.5));
+        expect(tracker.recordedPositions.first.speedMps, equals(12.0));
+        expect(tracker.recordedPositions.first.coordinates.latitude, equals(5.0000));
+
+        await tracker.stopTracking();
+        expect(sessionRepo.savedSessions.length, equals(1));
 
         tracker.dispose();
       },

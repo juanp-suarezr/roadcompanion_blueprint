@@ -31,9 +31,19 @@ class MockLocationService implements LocationService {
       permissionResult;
 
   @override
+  Future<bool> checkBackgroundPermission() async => true;
+
+  @override
+  Future<LocationPermissionResult> requestBackgroundPermission() async =>
+      permissionResult;
+
+  @override
   Stream<GpsPosition> getPositionStream({
     int distanceFilterMeters = 2,
     int intervalDurationMs = 1000,
+    bool enableBackgroundNotification = false,
+    String? notificationTitle,
+    String? notificationText,
   }) => _controller.stream;
 
   void dispose() => _controller.close();

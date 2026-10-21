@@ -72,4 +72,14 @@ abstract class AppColors {
 
   /// Inactivo / Desconectado (#6C8296) — Estado inactivo o pendiente.
   static const Color inactive = Color(0xFF6C8296);
+
+  // --- Aliases y tokens semánticos ---
+  static const Color primaryGold = warning;
+  static const Color secondaryCyan = cyanLuminous;
+  static const Color backgroundBlack = nightBlue;
+  static const Color backgroundCard = cardNavy;
+  static const Color cardBorder = darkSurfaceVariant;
+  static const Color textPrimary = coldWhite;
+  static const Color textSecondary = secondaryText;
+  static const Color surfaceAccent = darkSurfaceVariant;
 }

@@ -29,9 +29,24 @@ abstract class LocationService {
   /// Solicita al usuario los permisos de ubicación en primer plano.
   Future<LocationPermissionResult> requestPermission();
 
-  /// Flujo continuo de posiciones GPS en primer plano con alta precisión para navegación.
+  /// Comprueba si se cuenta con permiso de ubicación en segundo plano.
+  Future<bool> checkBackgroundPermission() async => false;
+
+  /// Solicita de forma progresiva el permiso de ubicación en segundo plano.
+  Future<LocationPermissionResult> requestBackgroundPermission() async =>
+      LocationPermissionResult.denied;
+
+  /// Flujo continuo de posiciones GPS con alta precisión para navegación.
+  ///
+  /// Si [enableBackgroundNotification] es verdadero, en plataformas compatibles (Android)
+  /// se iniciará un Foreground Service con notificación persistente para mantener el
+  /// seguimiento activo aún con la pantalla apagada.
   Stream<GpsPosition> getPositionStream({
     int distanceFilterMeters = 2,
     int intervalDurationMs = 1000,
+    bool enableBackgroundNotification = false,
+    String? notificationTitle,
+    String? notificationText,
   });
 }
+
