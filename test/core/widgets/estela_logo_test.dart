@@ -36,7 +36,7 @@ void main() {
       );
 
       expect(find.byType(EstelaLogo), findsOneWidget);
-      expect(find.text('ESTELA'), findsOneWidget);
+      expect(find.text('REstelar'), findsOneWidget);
       expect(find.text('NAVEGADOR COMPLEMENTARIO'), findsOneWidget);
     });
 
@@ -54,7 +54,7 @@ void main() {
         );
 
         expect(find.byType(EstelaLogo), findsOneWidget);
-        expect(find.text('ESTELA'), findsOneWidget);
+        expect(find.text('REstelar'), findsOneWidget);
         expect(find.text('NAVEGADOR DE RUTA COMPLEMENTARIO'), findsOneWidget);
       },
     );

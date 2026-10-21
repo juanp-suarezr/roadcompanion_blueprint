@@ -20,7 +20,7 @@ class NominatimGeocodingService implements GeocodingService {
   NominatimGeocodingService({
     http.Client? client,
     String userAgent =
-        'EstelaNavigationApp/1.0 (contact: estela@roadcompanion.app)',
+        'REstelarNavigationApp/1.0 (contact: restelar@roadcompanion.app)',
   }) : _client = client ?? http.Client(),
        _userAgent = userAgent;
 

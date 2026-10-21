@@ -8,7 +8,7 @@ import '../../../../domain/entities/coordinates.dart';
 /// Visor cartográfico interactivo real basado en [FlutterMap].
 ///
 /// Proporciona renderizado de carreteras reales, calles, cruces y nombres geográficos
-/// con soporte para el tema oscuro oficial de ESTELA (CartoDB Dark Matter) y claro (OpenStreetMap).
+/// con soporte para el tema oscuro oficial de REstelar (CartoDB Dark Matter) y claro (OpenStreetMap).
 class RealMapWidget extends StatelessWidget {
   final MapController mapController;
   final LatLng initialCenter;
@@ -131,7 +131,7 @@ class RealMapWidget extends StatelessWidget {
             TileLayer(
               urlTemplate: tileUrl,
               subdomains: subdomains,
-              userAgentPackageName: 'app.roadcompanion.estela',
+              userAgentPackageName: 'app.roadcompanion.restelar',
               tileProvider: NetworkTileProvider(),
             ),
 
@@ -148,7 +148,7 @@ class RealMapWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              // Trazo vial luminoso de ESTELA
+              // Trazo vial luminoso de REstelar
               PolylineLayer(
                 polylines: [
                   Polyline(

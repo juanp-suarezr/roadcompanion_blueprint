@@ -25,7 +25,7 @@ class NoRouteFoundException implements Exception {
 /// Implementación de [RoutingService] mediante el motor Open Source Routing Machine (OSRM).
 ///
 /// Consulta el perfil de conducción y transforma la geometría GeoJSON y los pasos
-/// en las entidades [RoutePlan] y [Maneuver] del dominio de ESTELA.
+/// en las entidades [RoutePlan] y [Maneuver] del dominio de REstelar.
 class OsrmRoutingService implements RoutingService {
   final http.Client _client;
   final String _baseUrl;
@@ -54,7 +54,7 @@ class OsrmRoutingService implements RoutingService {
         uri,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'EstelaNavigationApp/1.0 (motorcycle route companion)',
+          'User-Agent': 'REstelarNavigationApp/1.0 (motorcycle route companion)',
         },
       ).timeout(const Duration(seconds: 12));
 

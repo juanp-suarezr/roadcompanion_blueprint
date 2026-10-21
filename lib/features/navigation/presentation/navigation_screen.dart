@@ -48,7 +48,7 @@ enum NavigationScreenMode {
   demo,
 }
 
-/// Pantalla principal de navegación de ESTELA.
+/// Pantalla principal de navegación de REstelar.
 ///
 /// Integra tres experiencias complementarias:
 /// 1. Mapa cartográfico real (OpenStreetMap / CartoDB Dark Matter) con búsqueda y cálculo de rutas.

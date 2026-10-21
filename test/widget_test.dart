@@ -39,8 +39,8 @@ void main() {
     (WidgetTester tester) async {
       await pumpApp(tester);
 
-      // Verificación de elementos clave de la identidad ESTELA
-      expect(find.text('ESTELA'), findsWidgets);
+      // Verificación de elementos clave de la identidad REstelar
+      expect(find.text('REstelar'), findsWidgets);
       expect(find.text('NAVEGADOR DE RUTA COMPLEMENTARIO'), findsOneWidget);
       expect(find.text('LISTO PARA RODAR'), findsOneWidget);
       expect(find.text('Explorar navegación'), findsOneWidget);

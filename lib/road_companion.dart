@@ -1,4 +1,4 @@
-/// Biblioteca principal de dominio para ESTELA — Navegador de ruta complementario.
+/// Biblioteca principal de dominio para REstelar — Navegador de ruta complementario.
 ///
 /// Contiene las entidades esenciales de navegación, maniobras, cartografía y cálculo de rutas.
 library;

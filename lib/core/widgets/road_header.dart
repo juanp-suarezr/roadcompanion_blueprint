@@ -4,9 +4,9 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_typography.dart';
 import 'estela_logo.dart';
 
-/// Encabezado principal de la aplicación ESTELA.
+/// Encabezado principal de la aplicación REstelar.
 ///
-/// Presenta el emblema luminoso oficial, el nombre ESTELA, el descriptor/eslogan
+/// Presenta el emblema luminoso oficial, el nombre REstelar, el descriptor/eslogan
 /// y acceso táctil a Ajustes.
 class RoadHeader extends StatelessWidget {
   final VoidCallback onSettingsTap;
@@ -24,11 +24,11 @@ class RoadHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Emblema oficial de ESTELA (flecha aerodinámica ascendente y órbita)
+          // Emblema oficial de REstelar (flecha aerodinámica ascendente y órbita)
           const EstelaLogo(size: 42.0, variant: EstelaLogoVariant.emblem),
           const SizedBox(width: 14.0),
 
-          // Título y descriptor de ESTELA
+          // Título y descriptor de REstelar
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,10 +39,10 @@ class RoadHeader extends StatelessWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      'ESTELA',
+                      'REstelar',
                       style: AppTypography.appTitle.copyWith(
                         color: theme.colorScheme.onSurface,
-                        letterSpacing: 2.5,
+                        letterSpacing: 2.0,
                         fontWeight: FontWeight.w900,
                       ),
                     ),

@@ -13,7 +13,7 @@ void main() {
         final mockClient = MockClient((request) async {
           expect(request.url.host, equals('nominatim.openstreetmap.org'));
           expect(request.url.path, equals('/search'));
-          expect(request.headers['User-Agent'], contains('Estela'));
+          expect(request.headers['User-Agent'], contains('REstelar'));
 
           final sampleJson = jsonEncode([
             {

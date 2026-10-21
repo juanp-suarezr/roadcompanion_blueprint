@@ -4,22 +4,22 @@ import 'package:flutter/material.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_typography.dart';
 
-/// Variantes de presentación del logotipo oficial de ESTELA.
+/// Variantes de presentación del logotipo oficial de REstelar.
 enum EstelaLogoVariant {
   /// Emblema geométrico aislado (icono).
   emblem,
 
-  /// Emblema + Nombre ESTELA + Descriptor (vertical centrado).
+  /// Emblema + Nombre REstelar + Descriptor (vertical centrado).
   full,
 
-  /// Emblema + Nombre ESTELA (horizontal compacto).
+  /// Emblema + Nombre REstelar (horizontal compacto).
   compact,
 }
 
-/// Logotipo oficial y emblema reutilizable de ESTELA.
+/// Logotipo oficial y emblema reutilizable de REstelar.
 ///
 /// Dibuja vectorialmente mediante [CustomPainter] la flecha aerodinámica ascendente,
-/// la órbita astronómica/brújula y los trazos dinámicos de estela, sin recurrir a dependencias externas.
+/// la órbita astronómica/brújula y los trazos dinámicos de estela luminosa, sin recurrir a dependencias externas.
 class EstelaLogo extends StatelessWidget {
   final double size;
   final EstelaLogoVariant variant;
@@ -69,7 +69,7 @@ class EstelaLogo extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'ESTELA',
+                  'REstelar',
                   style: TextStyle(
                     fontSize: size * 0.42,
                     fontWeight: FontWeight.w900,
@@ -110,7 +110,7 @@ class EstelaLogo extends StatelessWidget {
             emblem,
             const SizedBox(height: 14.0),
             Text(
-              'ESTELA',
+              'REstelar',
               style: TextStyle(
                 fontSize: 28.0,
                 fontWeight: FontWeight.w900,
@@ -263,3 +263,7 @@ class _EstelaLogoPainter extends CustomPainter {
         oldDelegate.isDark != isDark;
   }
 }
+
+/// Alias oficiales para la marca REstelar
+typedef REstelarLogo = EstelaLogo;
+typedef REstelarLogoVariant = EstelaLogoVariant;

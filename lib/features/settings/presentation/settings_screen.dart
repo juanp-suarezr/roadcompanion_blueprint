@@ -342,7 +342,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'ESTELA',
+                              'REstelar',
                               style: TextStyle(
                                 fontSize: 17.0,
                                 fontWeight: FontWeight.w900,
