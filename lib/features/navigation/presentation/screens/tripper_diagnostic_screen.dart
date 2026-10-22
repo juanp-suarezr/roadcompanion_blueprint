@@ -53,12 +53,14 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   // Estado de voz
   bool _isTestingVoice = false;
   String? _voiceTestResult;
+  String? _scanError;
 
   StreamSubscription? _stateSub;
   StreamSubscription? _devicesSub;
   StreamSubscription? _gattSub;
   StreamSubscription? _logSub;
   StreamSubscription? _adapterStateSub;
+  StreamSubscription? _errorSub;
 
   @override
   void initState() {
@@ -67,9 +69,14 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     _devices = List.from(widget.bleService.discoveredDevices);
     _gattServices = List.from(widget.bleService.discoveredGattServices);
     _logs = List.from(widget.bleService.diagnosticLogs);
+    _scanError = widget.bleService.lastScanError;
 
     _stateSub = widget.bleService.stateStream.listen((state) {
       if (mounted) setState(() => _connectionState = state);
+    });
+
+    _errorSub = widget.bleService.scanErrorStream.listen((err) {
+      if (mounted) setState(() => _scanError = err);
     });
 
     _devicesSub = widget.bleService.discoveredDevicesStream.listen((devs) {
@@ -109,6 +116,7 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   @override
   void dispose() {
     _adapterStateSub?.cancel();
+    _errorSub?.cancel();
     _stateSub?.cancel();
     _devicesSub?.cancel();
     _gattSub?.cancel();
@@ -256,6 +264,7 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   }
 
   Future<void> _handleStartBleScan() async {
+    setState(() => _scanError = null);
     final bool hasPerm = await _requestBlePermissions();
     if (!hasPerm && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -926,13 +935,77 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          if (_scanError != null) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _scanError!,
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 11.5, height: 1.3),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.textSecondary),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => setState(() => _scanError = null),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (_devices.isEmpty)
             _buildEmptyDeviceState(isScanning)
-          else
+          else ...[
+            Row(
+              children: [
+                Text(
+                  'Dispositivos encontrados (${_devices.length})',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                if (isScanning) ...[
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.secondaryCyan),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Actualizando en vivo...',
+                    style: TextStyle(color: AppColors.secondaryCyan, fontSize: 11),
+                  ),
+                ] else ...[
+                  const Icon(Icons.check_circle_outline_rounded, color: Colors.greenAccent, size: 14),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Búsqueda finalizada',
+                    style: TextStyle(color: Colors.greenAccent, fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
             Column(
               children: _devices.map((d) => _buildDeviceItem(d)).toList(),
             ),
+          ],
         ],
       ),
     );
@@ -945,6 +1018,19 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     final bool isThisConnecting =
         widget.bleService.connectedDevice?.id == device.id &&
             _connectionState == TripperConnectionState.connecting;
+
+    final bool isUnnamed = device.name.trim().isEmpty || device.name == 'Dispositivo BLE sin nombre';
+    final String effectiveName = isUnnamed ? 'Dispositivo BLE sin nombre' : device.name.trim();
+    final String effectiveId = device.id.trim().isEmpty ? 'ID no disponible' : device.id.trim();
+
+    Color rssiColor;
+    if (device.rssi >= -65) {
+      rssiColor = Colors.greenAccent;
+    } else if (device.rssi >= -80) {
+      rssiColor = AppColors.primaryGold;
+    } else {
+      rssiColor = Colors.orangeAccent;
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -980,10 +1066,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                   children: [
                     Flexible(
                       child: Text(
-                        device.name.isEmpty ? 'Dispositivo BLE sin nombre' : device.name,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
+                        effectiveName,
+                        style: TextStyle(
+                          color: isUnnamed ? AppColors.textSecondary : AppColors.textPrimary,
+                          fontWeight: isUnnamed ? FontWeight.normal : FontWeight.bold,
+                          fontStyle: isUnnamed ? FontStyle.italic : FontStyle.normal,
                           fontSize: 13,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -1009,12 +1096,32 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     ],
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'ID: ${device.id} | RSSI: ${device.rssi} dBm',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'ID: $effectiveId',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      '•',
+                      style: TextStyle(color: Colors.white24, fontSize: 11),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.signal_cellular_alt_rounded, size: 12, color: rssiColor),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${device.rssi} dBm',
+                      style: TextStyle(color: rssiColor, fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
-                if (device.technicalEvidence.isNotEmpty)
+                if (device.technicalEvidence.isNotEmpty) ...[
+                  const SizedBox(height: 2),
                   Text(
                     device.technicalEvidence,
                     style: TextStyle(
@@ -1024,6 +1131,7 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                       fontSize: 10,
                     ),
                   ),
+                ],
               ],
             ),
           ),

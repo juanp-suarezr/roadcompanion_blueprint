@@ -51,6 +51,15 @@ abstract class TripperBleService {
   /// Envía experimentalmente una maniobra de navegación (solo tras conexión validada).
   Future<bool> sendManeuver(TripperManeuverPayload maneuver);
 
+  /// Último error registrado durante el escaneo o procesamiento de dispositivos BLE.
+  String? get lastScanError => null;
+
+  /// Flujo opcional de errores de escaneo.
+  Stream<String?> get scanErrorStream => const Stream.empty();
+
   /// Limpia el búfer de logs de diagnóstico.
   void clearDiagnosticLogs();
+
+  /// Limpia la lista de dispositivos descubiertos en memoria.
+  void clearDiscoveredDevices() {}
 }

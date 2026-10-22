@@ -41,10 +41,11 @@ class TripperDevice {
     required String id,
     required String name,
     required int rssi,
-    required List<String> serviceUuids,
+    List<String> serviceUuids = const [],
     Map<int, List<int>> manufacturerData = const {},
   }) {
-    final cleanName = name.trim().toUpperCase();
+    final trimmedName = name.trim();
+    final cleanName = trimmedName.toUpperCase();
     final bool hasNameMatch = cleanName.contains('ROYAL') ||
         cleanName.contains('ENFIELD') ||
         cleanName.contains('TRIPPER') ||
@@ -63,33 +64,64 @@ class TripperDevice {
 
     bool isCandidate = false;
     String confidence = 'Baja';
-    String evidence = 'Dispositivo BLE genérico sin identificadores de Royal Enfield.';
+    String evidence;
 
     if (hasNameMatch && hasKnownSerialUuid) {
       isCandidate = true;
       confidence = 'Alta';
       evidence =
-          'Nombre anunciado concordante ("$name") y servicios de comunicación serie detectados.';
+          'Nombre anunciado concordante ("$trimmedName") y servicios de comunicación serie detectados.';
     } else if (hasNameMatch) {
       isCandidate = true;
       confidence = 'Media';
       evidence =
-          'Nombre concordante con Royal Enfield ("$name"). Se requiere conectar para inspeccionar servicios GATT.';
-    } else if (hasKnownSerialUuid && cleanName.isNotEmpty) {
+          'Nombre concordante con Royal Enfield ("$trimmedName"). Se requiere conectar para inspeccionar servicios GATT.';
+    } else if (hasKnownSerialUuid) {
       confidence = 'Baja';
-      evidence =
-          'Perfil serie genérico pero nombre ("$name") no asociado a Royal Enfield.';
+      evidence = cleanName.isNotEmpty
+          ? 'Perfil serie detectado pero nombre ("$trimmedName") no asociado a Royal Enfield.'
+          : 'Perfil serie detectado en dispositivo sin nombre anunciado.';
+    } else if (cleanName.isEmpty) {
+      evidence = 'Periférico BLE transmitiendo paquetes publicitarios sin nombre.';
+    } else {
+      evidence = 'Dispositivo BLE genérico sin identificadores de Royal Enfield.';
     }
 
+    final effectiveName = trimmedName.isEmpty ? 'Dispositivo BLE sin nombre' : trimmedName;
+    final effectiveId = id.trim().isEmpty ? 'ID no disponible' : id.trim();
+
     return TripperDevice(
-      id: id,
-      name: name.isEmpty ? 'Dispositivo BLE sin nombre' : name,
+      id: effectiveId,
+      name: effectiveName,
       rssi: rssi,
       serviceUuids: serviceUuids,
       manufacturerData: manufacturerData,
       isTripperCandidate: isCandidate,
       confidenceLevel: confidence,
       technicalEvidence: evidence,
+    );
+  }
+
+  /// Crea una copia de este [TripperDevice] actualizando los campos especificados.
+  TripperDevice copyWith({
+    String? id,
+    String? name,
+    int? rssi,
+    List<String>? serviceUuids,
+    Map<int, List<int>>? manufacturerData,
+    bool? isTripperCandidate,
+    String? confidenceLevel,
+    String? technicalEvidence,
+  }) {
+    return TripperDevice(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      rssi: rssi ?? this.rssi,
+      serviceUuids: serviceUuids ?? this.serviceUuids,
+      manufacturerData: manufacturerData ?? this.manufacturerData,
+      isTripperCandidate: isTripperCandidate ?? this.isTripperCandidate,
+      confidenceLevel: confidenceLevel ?? this.confidenceLevel,
+      technicalEvidence: technicalEvidence ?? this.technicalEvidence,
     );
   }
 }

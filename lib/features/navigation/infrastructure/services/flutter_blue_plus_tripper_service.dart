@@ -14,12 +14,32 @@ import '../../domain/services/tripper_ble_service.dart';
 /// Gestiona descubrimiento seguro, evaluación técnica de candidatos, enlace BLE
 /// con el Tripper Pod de la Meteor 350 y registro de diagnóstico en tiempo real.
 class FlutterBluePlusTripperService implements TripperBleService {
+  static FlutterBluePlusTripperService? _instance;
+
+  factory FlutterBluePlusTripperService() {
+    return _instance ??= FlutterBluePlusTripperService._internal();
+  }
+
+  FlutterBluePlusTripperService._internal() {
+    _log(
+      'Servicio Tripper BLE inicializado. Plataforma: ${kIsWeb ? "Web" : Platform.operatingSystem}',
+    );
+  }
+
+  /// Permite reiniciar la instancia en entornos de pruebas unitarias.
+  @visibleForTesting
+  static void resetInstance() {
+    _instance?.dispose();
+    _instance = null;
+  }
+
   final _stateController = StreamController<TripperConnectionState>.broadcast();
   final _devicesController =
       StreamController<List<TripperDevice>>.broadcast();
   final _gattServicesController =
       StreamController<List<TripperGattService>>.broadcast();
   final _logController = StreamController<String>.broadcast();
+  final _errorController = StreamController<String?>.broadcast();
 
   final List<String> _diagnosticLogs = [];
   final List<TripperDevice> _discoveredDevices = [];
@@ -29,12 +49,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
   BluetoothDevice? _activeBleDevice;
   StreamSubscription? _scanSubscription;
   StreamSubscription? _deviceStateSubscription;
-
-  FlutterBluePlusTripperService() {
-    _log(
-      'Servicio Tripper BLE inicializado. Plataforma: ${kIsWeb ? "Web" : Platform.operatingSystem}',
-    );
-  }
+  String? _lastScanError;
 
   @override
   Stream<TripperConnectionState> get stateStream => _stateController.stream;
@@ -66,6 +81,12 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
   @override
   List<String> get diagnosticLogs => List.unmodifiable(_diagnosticLogs);
+
+  @override
+  String? get lastScanError => _lastScanError;
+
+  @override
+  Stream<String?> get scanErrorStream => _errorController.stream;
 
   void _setState(TripperConnectionState state) {
     _currentState = state;
@@ -107,8 +128,10 @@ class FlutterBluePlusTripperService implements TripperBleService {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     try {
+      _lastScanError = null;
+      _errorController.add(null);
       _discoveredDevices.clear();
-      _devicesController.add(_discoveredDevices);
+      _devicesController.add(List.unmodifiable(_discoveredDevices));
       _setState(TripperConnectionState.scanning);
       _log('Iniciando escaneo BLE (timeout: ${timeout.inSeconds}s)...');
 
@@ -122,50 +145,90 @@ class FlutterBluePlusTripperService implements TripperBleService {
       await _scanSubscription?.cancel();
       _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
         for (final r in results) {
-          final advertisedName = r.advertisementData.advName.isNotEmpty
-              ? r.advertisementData.advName
-              : r.device.platformName;
+          try {
+            final rawName = r.advertisementData.advName.trim().isNotEmpty
+                ? r.advertisementData.advName
+                : (r.device.platformName.trim().isNotEmpty
+                    ? r.device.platformName
+                    : (r.device.advName.trim().isNotEmpty
+                        ? r.device.advName
+                        : ''));
 
-          final serviceUuids = r.advertisementData.serviceUuids
-              .map((u) => u.toString())
-              .toList();
+            final deviceId = r.device.remoteId.str.trim().isNotEmpty
+                ? r.device.remoteId.str.trim()
+                : 'ID_NO_DISPONIBLE';
 
-          final evaluated = TripperDevice.evaluate(
-            id: r.device.remoteId.str,
-            name: advertisedName,
-            rssi: r.rssi,
-            serviceUuids: serviceUuids,
-            manufacturerData: r.advertisementData.manufacturerData,
-          );
-
-          final existingIndex =
-              _discoveredDevices.indexWhere((d) => d.id == evaluated.id);
-          if (existingIndex >= 0) {
-            _discoveredDevices[existingIndex] = evaluated;
-          } else {
-            _discoveredDevices.add(evaluated);
-            if (evaluated.isTripperCandidate) {
-              _log(
-                '¡CANDIDATO TRIPPER DETECTADO!: "${evaluated.name}" (${evaluated.id}) RSSI: ${evaluated.rssi} dBm [Confianza: ${evaluated.confidenceLevel}]',
-              );
+            final List<String> serviceUuids = [];
+            try {
+              for (final u in r.advertisementData.serviceUuids) {
+                serviceUuids.add(u.toString());
+              }
+            } catch (uErr) {
+              _log('Aviso al extraer UUIDs para $deviceId: $uErr');
             }
+
+            final evaluated = TripperDevice.evaluate(
+              id: deviceId,
+              name: rawName,
+              rssi: r.rssi,
+              serviceUuids: serviceUuids,
+              manufacturerData: r.advertisementData.manufacturerData,
+            );
+
+            final existingIndex =
+                _discoveredDevices.indexWhere((d) => d.id == evaluated.id);
+            if (existingIndex >= 0) {
+              // Actualizar RSSI y nombre sin duplicar el identificador
+              final old = _discoveredDevices[existingIndex];
+              if (old.rssi != evaluated.rssi || old.name != evaluated.name) {
+                _discoveredDevices[existingIndex] = evaluated;
+              }
+            } else {
+              _discoveredDevices.add(evaluated);
+              _log(
+                'Dispositivo BLE detectado: "${evaluated.name}" [ID: ${evaluated.id}] RSSI: ${evaluated.rssi} dBm',
+              );
+              if (evaluated.isTripperCandidate) {
+                _log(
+                  '¡CANDIDATO TRIPPER DETECTADO!: "${evaluated.name}" (${evaluated.id}) RSSI: ${evaluated.rssi} dBm [Confianza: ${evaluated.confidenceLevel}]',
+                );
+              }
+            }
+          } catch (itemErr) {
+            final errMsg =
+                'Error al procesar dispositivo BLE (${r.device.remoteId.str}): $itemErr';
+            _log('[ERROR] $errMsg');
+            _lastScanError = errMsg;
+            _errorController.add(errMsg);
           }
         }
         _devicesController.add(List.unmodifiable(_discoveredDevices));
+      }, onError: (e) {
+        final errMsg = 'Error en flujo de resultados de escaneo BLE: $e';
+        _log('[ERROR] $errMsg');
+        _lastScanError = errMsg;
+        _errorController.add(errMsg);
       });
 
       await FlutterBluePlus.startScan(timeout: timeout);
       await FlutterBluePlus.isScanning.where((s) => !s).first;
 
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
+
       if (_currentState == TripperConnectionState.scanning) {
         _setState(TripperConnectionState.idle);
+        _devicesController.add(List.unmodifiable(_discoveredDevices));
         _log(
           'Escaneo BLE finalizado. Dispositivos detectados: ${_discoveredDevices.length}',
         );
       }
     } catch (e) {
       _setState(TripperConnectionState.error);
-      _log('Error durante el escaneo BLE: $e');
+      final errMsg = 'Error durante el escaneo BLE: $e';
+      _log('[ERROR] $errMsg');
+      _lastScanError = errMsg;
+      _errorController.add(errMsg);
     }
   }
 
@@ -177,11 +240,29 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _scanSubscription = null;
       if (_currentState == TripperConnectionState.scanning) {
         _setState(TripperConnectionState.idle);
+        _devicesController.add(List.unmodifiable(_discoveredDevices));
         _log('Escaneo BLE detenido manualmente por el usuario.');
       }
     } catch (e) {
       _log('Aviso al detener escaneo BLE: $e');
     }
+  }
+
+  @override
+  void clearDiscoveredDevices() {
+    _discoveredDevices.clear();
+    _devicesController.add(List.unmodifiable(_discoveredDevices));
+    _log('Lista de dispositivos descubiertos reiniciada.');
+  }
+
+  void dispose() {
+    _scanSubscription?.cancel();
+    _deviceStateSubscription?.cancel();
+    _stateController.close();
+    _devicesController.close();
+    _gattServicesController.close();
+    _logController.close();
+    _errorController.close();
   }
 
   @override
