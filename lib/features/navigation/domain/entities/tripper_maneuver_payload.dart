@@ -1,3 +1,5 @@
+import '../services/tripper_protocol.dart';
+
 /// Tipos de maniobra estándar de navegación para motocicleta.
 enum TripperManeuverType {
   straight,
@@ -64,6 +66,37 @@ class TripperManeuverPayload {
     }
     bytes.add(checksum);
     return bytes;
+  }
+
+  /// Genera la trama real de 20 bytes del protocolo oficial del Tripper Pod (CMD_NAVIGATE).
+  List<int> toProtocolPacket({bool nightMode = false}) {
+    final code = _mapToProtocolManeuverCode(maneuverType);
+    return TripperProtocol.buildNavPacket(
+      maneuver: code,
+      distanceMeters: distanceMeters,
+      nightMode: nightMode,
+    );
+  }
+
+  int _mapToProtocolManeuverCode(TripperManeuverType type) {
+    switch (type) {
+      case TripperManeuverType.straight:
+        return TripperProtocol.maneuverStraight;
+      case TripperManeuverType.turnLeft:
+        return TripperProtocol.maneuverTurnLeft;
+      case TripperManeuverType.turnRight:
+        return TripperProtocol.maneuverTurnRight;
+      case TripperManeuverType.slightLeft:
+        return TripperProtocol.maneuverSlightLeft;
+      case TripperManeuverType.slightRight:
+        return TripperProtocol.maneuverSlightRight;
+      case TripperManeuverType.uTurn:
+        return TripperProtocol.maneuverUTurnCounterClockwise;
+      case TripperManeuverType.roundabout:
+        return TripperProtocol.maneuverRoundaboutBase;
+      case TripperManeuverType.destinationReached:
+        return TripperProtocol.maneuverDestination;
+    }
   }
 
   int _mapManeuverCode(TripperManeuverType type) {

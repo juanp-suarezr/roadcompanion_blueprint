@@ -46,42 +46,64 @@ class TripperDevice {
   }) {
     final trimmedName = name.trim();
     final cleanName = trimmedName.toUpperCase();
+    final bool isExactReDisp = cleanName == 'RE_DISP' || cleanName.startsWith('RE_DISP');
     final bool hasNameMatch =
+        isExactReDisp ||
         cleanName.contains('ROYAL') ||
         cleanName.contains('ENFIELD') ||
         cleanName.contains('TRIPPER') ||
         cleanName.contains('RE_') ||
         cleanName.contains('METEOR');
 
-    // UUIDs comunes en módulos UART/Serie o referencias de la industria
-    final bool hasKnownSerialUuid = serviceUuids.any((u) {
+    // UUID específico del Tripper Pod (NXP Wireless UART: 01FF0100-BA5E-F4EE-5CA1-EB1E5E4B1CE0)
+    final bool hasNxpTripperUuid = serviceUuids.any((u) {
       final norm = u.toLowerCase();
-      return norm.contains('ffe0') ||
-          norm.contains('fff0') ||
-          norm.contains('fe95') ||
-          norm.contains('1800') ||
-          norm.contains('180a');
+      return norm.contains('01ff0100') || norm.contains('01ff0101');
     });
+
+    // Prefijo MAC registrado de NXP Semiconductor (00:60:37)
+    final bool hasNxpMac = id.trim().toUpperCase().startsWith('00:60:37');
+
+    // UUIDs comunes en módulos UART/Serie o referencias de la industria
+    final bool hasKnownSerialUuid = hasNxpTripperUuid ||
+        serviceUuids.any((u) {
+          final norm = u.toLowerCase();
+          return norm.contains('ffe0') ||
+              norm.contains('fff0') ||
+              norm.contains('fe95') ||
+              norm.contains('1800') ||
+              norm.contains('180a');
+        });
 
     bool isCandidate = false;
     String confidence = 'Baja';
     String evidence;
 
-    if (hasNameMatch && hasKnownSerialUuid) {
+    if (isExactReDisp && (hasNxpTripperUuid || hasNxpMac)) {
       isCandidate = true;
       confidence = 'Alta';
       evidence =
-          'Nombre anunciado concordante ("$trimmedName") y servicios de comunicación serie detectados.';
+          'Coincidencia exacta con Tripper Pod (Nombre "RE_DISP" y prefijo MAC NXP / UUID NXP Wireless UART confirmado).';
+    } else if (isExactReDisp) {
+      isCandidate = true;
+      confidence = 'Alta';
+      evidence =
+          'Nombre anunciado idéntico al Tripper Pod original ("$trimmedName"). Se procederá a inspección GATT del servicio 01FF0100.';
+    } else if (hasNxpTripperUuid || (hasNameMatch && hasKnownSerialUuid)) {
+      isCandidate = true;
+      confidence = 'Alta';
+      evidence =
+          'Nombre anunciado concordante ("$trimmedName") y servicios de comunicación serie NXP detectados.';
     } else if (hasNameMatch) {
       isCandidate = true;
       confidence = 'Media';
       evidence =
           'Nombre concordante con Royal Enfield ("$trimmedName"). Se requiere conectar para inspeccionar servicios GATT.';
-    } else if (hasKnownSerialUuid) {
+    } else if (hasKnownSerialUuid || hasNxpMac) {
       confidence = 'Baja';
       evidence = cleanName.isNotEmpty
-          ? 'Perfil serie detectado pero nombre ("$trimmedName") no asociado a Royal Enfield.'
-          : 'Perfil serie detectado en dispositivo sin nombre anunciado.';
+          ? 'Perfil serie/NXP detectado pero nombre ("$trimmedName") no asociado a Royal Enfield.'
+          : 'Perfil serie/NXP detectado en dispositivo sin nombre anunciado.';
     } else if (cleanName.isEmpty) {
       evidence =
           'Periférico BLE transmitiendo paquetes publicitarios sin nombre.';

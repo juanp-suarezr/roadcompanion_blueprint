@@ -8,6 +8,7 @@ import '../../domain/entities/tripper_device.dart';
 import '../../domain/entities/tripper_gatt_info.dart';
 import '../../domain/entities/tripper_maneuver_payload.dart';
 import '../../domain/services/tripper_ble_service.dart';
+import '../../domain/services/tripper_protocol.dart';
 
 /// Implementación de producción de [TripperBleService] empleando `flutter_blue_plus`.
 ///
@@ -46,6 +47,16 @@ class FlutterBluePlusTripperService implements TripperBleService {
   TripperConnectionState _currentState = TripperConnectionState.idle;
   TripperDevice? _connectedDevice;
   BluetoothDevice? _activeBleDevice;
+  BluetoothCharacteristic? _writeCharacteristic;
+  Timer? _keepAliveTimer;
+  DateTime? _lastPacketSentTime;
+  DateTime? _connectedSince;
+  int _disconnectCount = 0;
+  String? _lastPacketSentHex;
+  String? _lastTransmissionResult;
+  String? _lastErrorStage;
+  String? _lastErrorDetail;
+
   StreamSubscription? _scanSubscription;
   StreamSubscription? _deviceStateSubscription;
   String? _lastScanError;
@@ -96,10 +107,28 @@ class FlutterBluePlusTripperService implements TripperBleService {
   @override
   Stream<String?> get scanErrorStream => _errorController.stream;
 
+  @override
+  String? get lastPacketSentHex => _lastPacketSentHex;
+
+  @override
+  String? get lastTransmissionResult => _lastTransmissionResult;
+
+  @override
+  DateTime? get connectedSince => _connectedSince;
+
+  @override
+  int get disconnectCount => _disconnectCount;
+
+  @override
+  String? get lastErrorStage => _lastErrorStage;
+
+  @override
+  String? get lastErrorDetail => _lastErrorDetail;
+
   void _setState(TripperConnectionState state) {
     _currentState = state;
     _stateController.add(state);
-    _log('Estado conexión BLE: ${state.name}');
+    _log('Estado conexión BLE: ${state.displayName} (${state.name})');
   }
 
   void _log(String message) {
@@ -111,6 +140,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
     }
     _logController.add(entry);
   }
+
 
   @override
   Future<bool> isBluetoothAvailable() async {
@@ -316,10 +346,10 @@ class FlutterBluePlusTripperService implements TripperBleService {
     }
 
     try {
-      // 1. Detener el escaneo previo y esperar a que finalice en el stack nativo
+      // 1. Detener el escaneo previo y esperar estabilización del stack nativo
       _currentConnectionPhase = 'deteniendo_escaneo';
       _log(
-        'Fase 1/4: Deteniendo escaneo BLE previo para liberar el controlador...',
+        'Fase 1/6: Deteniendo escaneo BLE previo para liberar el controlador Bluetooth...',
       );
       if (FlutterBluePlus.isScanningNow) {
         await FlutterBluePlus.stopScan();
@@ -333,6 +363,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
       await _scanSubscription?.cancel();
       _scanSubscription = null;
 
+      // Holgura imprescindible para Samsung Galaxy / Android 16 antes de iniciar conexión directa
+      await Future.delayed(const Duration(milliseconds: 350));
+
       if (_isCancelRequested) {
         _log('Conexión cancelada antes de iniciar el enlace.');
         _currentConnectionPhase = 'cancelado';
@@ -345,7 +378,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _currentConnectionPhase = 'solicitando_enlace';
       _setState(TripperConnectionState.connecting);
       _log(
-        'Fase 2/4: Solicitando enlace GATT con ${device.id} (Timeout 30s)...',
+        'Fase 2/6: Solicitando enlace GATT con ${device.id} (autoConnect: false, Timeout 30s)...',
       );
 
       final bleDevice = BluetoothDevice.fromId(device.id);
@@ -355,17 +388,24 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _deviceStateSubscription = bleDevice.connectionState.listen((state) {
         _log('Evento connectionState nativo: ${state.name}');
         if (state == BluetoothConnectionState.disconnected &&
-            _currentState == TripperConnectionState.connected) {
-          _setState(TripperConnectionState.idle);
+            (_currentState.isReadyForNavigation ||
+                _currentState == TripperConnectionState.gattConnected ||
+                _currentState == TripperConnectionState.servicesDiscovered)) {
+          _disconnectCount++;
+          _keepAliveTimer?.cancel();
+          _keepAliveTimer = null;
+          _writeCharacteristic = null;
           _connectedDevice = null;
           _activeBleDevice = null;
           _discoveredGattServices.clear();
           _gattServicesController.add(const []);
+          _currentConnectionPhase = 'desconectado';
+          _setState(TripperConnectionState.disconnected);
           _log(
-            'Dispositivo desconectado de forma remota o por pérdida de señal.',
+            'Dispositivo desconectado de forma remota o por watchdog/pérdida de señal (Desconexión acumulada #$_disconnectCount).',
           );
         } else if (state == BluetoothConnectionState.connected &&
-            _currentState != TripperConnectionState.connected &&
+            !_currentState.isReadyForNavigation &&
             _currentState != TripperConnectionState.connecting) {
           _log('Reconexión detectada. Rediscurriendo servicios GATT...');
           _discoverAndRecordServices(bleDevice, device);
@@ -373,8 +413,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       });
 
       // 3. Conexión física con timeout de 30 segundos
-      _currentConnectionPhase = 'esperando_confirmacion';
-      _log('Fase 3/4: Esperando confirmación de conexión del periférico...');
+      _currentConnectionPhase = 'esperando_confirmacion_gatt';
+      _log('Fase 3/6: Esperando confirmación de enlace GATT del periférico...');
       await bleDevice.connect(
         license: License.nonprofit,
         autoConnect: false,
@@ -390,12 +430,111 @@ class FlutterBluePlusTripperService implements TripperBleService {
         return false;
       }
 
+      _connectedSince = DateTime.now();
+      _setState(TripperConnectionState.gattConnected);
+      _log('¡Enlace GATT establecido físicamente!');
+
       // 4. Descubrimiento de servicios y características GATT
       _currentConnectionPhase = 'descubriendo_servicios';
       _log(
-        'Fase 4/4: Enlace confirmado. Descubriendo servicios y características GATT...',
+        'Fase 4/6: Enlace GATT confirmado. Descubriendo servicios y características...',
       );
       final servicesCount = await _discoverAndRecordServices(bleDevice, device);
+      _setState(TripperConnectionState.servicesDiscovered);
+
+      // 5. Identificación de la característica de comunicación NXP Wireless UART
+      _currentConnectionPhase = 'identificando_caracteristica';
+      _log(
+        'Fase 5/6: Localizando característica NXP Wireless UART (UUID 01FF0101)...',
+      );
+
+      BluetoothCharacteristic? targetChar;
+      final services = await bleDevice.discoverServices();
+      for (final s in services) {
+        final sUuid = s.uuid.toString().toLowerCase();
+        if (sUuid.contains('01ff0100') || sUuid.contains('fee7')) {
+          for (final c in s.characteristics) {
+            final cUuid = c.uuid.toString().toLowerCase();
+            if (cUuid.contains('01ff0101') ||
+                cUuid.contains('fec7') ||
+                c.properties.write ||
+                c.properties.writeWithoutResponse) {
+              targetChar = c;
+              break;
+            }
+          }
+        }
+      }
+
+      // Fallback si el UUID no tuvo coincidencia exacta
+      if (targetChar == null) {
+        for (final s in services) {
+          for (final c in s.characteristics) {
+            if (c.properties.write || c.properties.writeWithoutResponse) {
+              targetChar = c;
+              _log(
+                'Aviso técnico: UUID exacto NXP no encontrado en publicidad. Empleando característica con soporte de escritura: ${c.uuid}',
+              );
+              break;
+            }
+          }
+          if (targetChar != null) break;
+        }
+      }
+
+      if (targetChar == null) {
+        throw Exception(
+          'No se localizó ninguna característica GATT con permiso de escritura en el periférico.',
+        );
+      }
+
+      _writeCharacteristic = targetChar;
+      _setState(TripperConnectionState.characteristicIdentified);
+      _log(
+        'Característica de comunicación identificada: ${targetChar.uuid} (Write: ${targetChar.properties.write}, WriteNoResp: ${targetChar.properties.writeWithoutResponse})',
+      );
+
+      // 6. Autenticación y Handshake (esperar ~200 ms entre descubrimiento y primera escritura según PROTOCOL.md)
+      _currentConnectionPhase = 'autenticacion';
+      _setState(TripperConnectionState.authPending);
+      _log(
+        'Fase 6/6: Esperando 200 ms de estabilización antes del handshake de protocolo...',
+      );
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (_isCancelRequested) {
+        _log('Conexión cancelada antes del handshake.');
+        await bleDevice.disconnect();
+        _currentConnectionPhase = 'cancelado';
+        _isConnecting = false;
+        _setState(TripperConnectionState.idle);
+        return false;
+      }
+
+      // Transmitir HANDSHAKE_RESUME (0x21 00 ... 40 45)
+      _log('Transmitiendo paquete HANDSHAKE_RESUME (20 bytes)...');
+      final handshakeOk = await _sendPacketDirect(
+        TripperProtocol.packetHandshakeResume,
+        description: 'HANDSHAKE_RESUME',
+      );
+
+      if (!handshakeOk) {
+        _log('Aviso: Fallo al transmitir handshake inicial.');
+      } else {
+        _setState(TripperConnectionState.authenticated);
+        _log('¡Sesión autenticada mediante protocolo Tripper Pod!');
+      }
+
+      // Esperar 150 ms antes de enviar la sincronización de hora
+      await Future.delayed(const Duration(milliseconds: 150));
+      final timePacket = TripperProtocol.buildSetTimeNowPacket();
+      await _sendPacketDirect(
+        timePacket,
+        description: 'CMD_SET_TIME (sincronización de reloj)',
+      );
+
+      // Iniciar el temporizador de watchdog Keepalive (PING_FW cada 2s)
+      _startKeepAliveTimer();
 
       _connectedDevice = device;
       _currentConnectionPhase = 'conectado';
@@ -403,15 +542,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
       stopwatch.stop();
 
       _log('=============================================');
-      _log('¡CONEXIÓN GATT EXITOSA!');
+      _log('¡CONEXIÓN Y SESIÓN TRIPPER POD EXITOSA!');
       _log('Dispositivo: "${device.name}" (${device.id})');
       _log('Servicios descubiertos: $servicesCount');
+      _log('Característica de escritura activa: ${targetChar.uuid}');
       _log(
         'Duración total: ${stopwatch.elapsedMilliseconds} ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)',
       );
-      _log(
-        'AVISO TÉCNICO: La identidad como Tripper Pod requiere verificar los UUIDs de servicios descubiertos. No se emitirán escrituras GATT.',
-      );
+      _log('Watchdog de keepalive activo: PING_FW cada 2000 ms.');
       _log('=============================================');
 
       _isConnecting = false;
@@ -422,6 +560,11 @@ class FlutterBluePlusTripperService implements TripperBleService {
       final elapsedSec = (elapsedMs / 1000).toStringAsFixed(1);
       final failedPhase = _currentConnectionPhase ?? 'desconocida';
 
+      _lastErrorStage = failedPhase;
+      _lastErrorDetail = e.toString();
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = null;
+      _writeCharacteristic = null;
       _currentConnectionPhase = 'error';
       _setState(TripperConnectionState.error);
       _connectedDevice = null;
@@ -430,10 +573,10 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _gattServicesController.add(const []);
 
       _log('=============================================');
-      _log('[ERROR-CONEXION] Fallo en fase "$failedPhase"');
+      _log('[ERROR-CONEXION] Fallo en etapa "$failedPhase"');
       _log('Dispositivo objetivo: "${device.name}" (${device.id})');
       _log('Duración hasta el fallo: $elapsedMs ms ($elapsedSec s)');
-      _log('Excepción completa: $e');
+      _log('Excepción: $e');
 
       if (e is FlutterBluePlusException) {
         _log(
@@ -441,23 +584,136 @@ class FlutterBluePlusTripperService implements TripperBleService {
         );
       }
 
-      if (Platform.isAndroid || !kIsWeb) {
-        _log('DIAGNÓSTICO SAMSUNG GALAXY / ANDROID 16:');
-        _log(
-          '1. Si el Tripper Pod requiere emparejamiento por PIN/clave, revisa la bandeja de notificaciones de Android por si apareció una alerta de "Solicitud de vinculación Bluetooth".',
-        );
-        _log(
-          '2. Si el Tripper Pod estuvo encendido más de 120 segundos sin vincularse, apaga y enciende la llave de la moto para reiniciar la ventana de emparejamiento.',
-        );
-        _log(
-          '3. Error 133 / GATT_ERROR suele ocurrir si el periférico rechazó la negociación de MTU o timeout de enlace.',
-        );
-      }
-      _log('=============================================');
+      final errStr = e.toString();
+      final isTimeout147 = errStr.contains('147') ||
+          errStr.toLowerCase().contains('timeout') ||
+          errStr.toLowerCase().contains('connection_timeout');
 
+      if (isTimeout147) {
+        _log('---------------------------------------------');
+        _log('DIAGNÓSTICO CRÍTICO: TIMEOUT GATT / CÓDIGO 147 (GATT_CONNECTION_TIMEOUT)');
+        _log(
+          '1. VENTANA DE ANUNCIO CERRADA: El Tripper Pod original de Royal Enfield anuncia BLE únicamente durante los primeros 30 a 120 segundos tras girar la llave de la moto (contacto ON). Pasado ese tiempo apaga la radio BLE para ahorrar batería. SOLUCIÓN: Gira la llave a OFF y de nuevo a ON para reabrir la ventana publicitaria.',
+        );
+        _log(
+          '2. LIMPIEZA DE VINCULACIÓN: Si el Samsung Galaxy A35 vinculó previamente el dispositivo "RE_DISP", ve a Ajustes de Android > Bluetooth > RE_DISP y selecciona "Desvincular" u "Olvidar".',
+        );
+        _log(
+          '3. CONFLICTO DE APLICACIONES: Asegúrate de que la aplicación oficial de Royal Enfield esté completamente cerrada (Forzar detención) para que no bloquee el canal BLE.',
+        );
+        _log(
+          '4. UBICACIÓN FÍSICA: Realiza la prueba junto a la moto estacionada, con la pantalla circular del Tripper encendida.',
+        );
+        _log('---------------------------------------------');
+      }
+
+      _log('=============================================');
       _isConnecting = false;
       return false;
     }
+  }
+
+  void _startKeepAliveTimer() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (_currentState.isReadyForNavigation && _writeCharacteristic != null) {
+        final now = DateTime.now();
+        final lastSent = _lastPacketSentTime;
+        if (lastSent == null || now.difference(lastSent).inSeconds >= 2) {
+          await _sendPacketDirect(
+            TripperProtocol.packetPingFw,
+            description: 'PING_FW (watchdog keepalive)',
+          );
+        }
+      }
+    });
+  }
+
+  Future<bool> _sendPacketDirect(
+    List<int> bytes, {
+    required String description,
+  }) async {
+    final char = _writeCharacteristic;
+    if (char == null) {
+      final msg = 'Fallo de transmisión: No hay característica GATT activa.';
+      _lastTransmissionResult = msg;
+      _log('[TX-ERROR] $msg');
+      return false;
+    }
+
+    try {
+      final hex = TripperProtocol.toHexString(bytes);
+      _lastPacketSentHex = hex;
+      final withoutResponse = char.properties.writeWithoutResponse;
+
+      await char.write(bytes, withoutResponse: withoutResponse);
+
+      _lastPacketSentTime = DateTime.now();
+      _lastTransmissionResult = 'OK ($description)';
+      _log('[TX-OK] $description | Trama: $hex');
+      return true;
+    } catch (e) {
+      final errMsg = 'Error al escribir en característica GATT: $e';
+      _lastTransmissionResult = errMsg;
+      _log('[TX-ERROR] $errMsg');
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> sendRawPacket(List<int> bytes) async {
+    if (_writeCharacteristic == null) {
+      _log('No se puede enviar trama: periférico no enlazado.');
+      return false;
+    }
+    return _sendPacketDirect(bytes, description: 'TRAMA_CRUDA_MANUAL');
+  }
+
+  @override
+  Future<bool> sendTestMessage() async {
+    if (_writeCharacteristic == null) {
+      _log('No se puede enviar indicación de prueba: periférico no enlazado.');
+      return false;
+    }
+    _log('Transmitiendo indicación de prueba de navegación al Tripper Pod...');
+    // Maniobra controlada: seguir recto 500 metros
+    final testNav = TripperProtocol.buildNavPacket(
+      maneuver: TripperProtocol.maneuverStraight,
+      distanceMeters: 500,
+      nextManeuver: TripperProtocol.nextManeuverNone,
+    );
+    final ok = await _sendPacketDirect(
+      testNav,
+      description: 'PRUEBA_MANIOBRA_RECTO_500M',
+    );
+    if (ok) {
+      _setState(TripperConnectionState.testMessageSent);
+    }
+    return ok;
+  }
+
+  @override
+  Future<bool> sendPin(String pin) async {
+    if (_writeCharacteristic == null) {
+      _log('No se puede enviar PIN: periférico no enlazado.');
+      return false;
+    }
+    final pinPacket = TripperProtocol.buildPinPacket(pin);
+    return _sendPacketDirect(pinPacket, description: 'PIN_AUTENTICACION');
+  }
+
+  @override
+  Future<bool> sendManeuver(TripperManeuverPayload maneuver) async {
+    if (_writeCharacteristic == null || !_currentState.isReadyForNavigation) {
+      _log(
+        'No se puede emitir maniobra: sesión Tripper Pod no autenticada.',
+      );
+      return false;
+    }
+
+    _log(maneuver.toDiagnosticString());
+    final bytes = maneuver.toProtocolPacket();
+    return _sendPacketDirect(bytes, description: maneuver.toDiagnosticString());
   }
 
   Future<int> _discoverAndRecordServices(
@@ -502,11 +758,15 @@ class FlutterBluePlusTripperService implements TripperBleService {
     try {
       _setState(TripperConnectionState.disconnecting);
       _log('Desconectando dispositivo de forma segura...');
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = null;
+      _writeCharacteristic = null;
       await _activeBleDevice?.disconnect();
       await _deviceStateSubscription?.cancel();
       _deviceStateSubscription = null;
       _activeBleDevice = null;
       _connectedDevice = null;
+      _connectedSince = null;
       _discoveredGattServices.clear();
       _gattServicesController.add(const []);
       _currentConnectionPhase = null;
@@ -514,30 +774,15 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _log('Desconexión completada.');
     } catch (e) {
       _log('Aviso al desconectar: $e');
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = null;
+      _writeCharacteristic = null;
+      _connectedSince = null;
       _discoveredGattServices.clear();
       _gattServicesController.add(const []);
       _currentConnectionPhase = null;
       _setState(TripperConnectionState.idle);
     }
-  }
-
-  @override
-  Future<bool> sendManeuver(TripperManeuverPayload maneuver) async {
-    if (_currentState != TripperConnectionState.connected ||
-        _activeBleDevice == null) {
-      _log(
-        'No se puede emitir maniobra: no hay conexión BLE activa con el Tripper Pod.',
-      );
-      return false;
-    }
-
-    _log(maneuver.toDiagnosticString());
-    final bytes = maneuver.toTentativeBytes();
-    _log('Bytes tentativos generados: $bytes');
-    _log(
-      'AVISO DE SEGURIDAD: Carga útil registrada en diagnóstico. En modo experimental seguro, la transmisión física queda condicionada a confirmación en el dispositivo real de la Meteor.',
-    );
-    return true;
   }
 
   @override
@@ -553,11 +798,20 @@ class FlutterBluePlusTripperService implements TripperBleService {
     buffer.writeln('=== INFORME DE DIAGNÓSTICO BLE — RESTELAR ===');
     buffer.writeln('Fecha/Hora: $now');
     buffer.writeln('Plataforma: ${kIsWeb ? "Web" : Platform.operatingSystem}');
-    buffer.writeln('Estado de conexión: ${_currentState.name}');
+    buffer.writeln(
+      'Estado de conexión: ${_currentState.name} (${_currentState.displayName})',
+    );
     buffer.writeln('Fase de conexión: ${_currentConnectionPhase ?? "ninguna"}');
+    buffer.writeln('Tiempo conectado desde: ${_connectedSince?.toIso8601String() ?? "No conectado"}');
+    buffer.writeln('Contador de desconexiones: $_disconnectCount');
+    buffer.writeln('Última etapa de error: ${_lastErrorStage ?? "ninguna"}');
+    buffer.writeln('Último detalle de error: ${_lastErrorDetail ?? "ninguno"}');
+    buffer.writeln('Última trama enviada: ${_lastPacketSentHex ?? "ninguna"}');
+    buffer.writeln('Resultado última transmisión: ${_lastTransmissionResult ?? "ninguno"}');
     buffer.writeln(
       'Dispositivo conectado: ${_connectedDevice != null ? "${_connectedDevice!.name} (${_connectedDevice!.id})" : "Ninguno"}',
     );
+
     buffer.writeln('Dispositivos descubiertos (${_discoveredDevices.length}):');
     for (final d in _discoveredDevices) {
       buffer.writeln(

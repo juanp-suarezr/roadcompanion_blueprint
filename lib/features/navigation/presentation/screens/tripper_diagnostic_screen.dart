@@ -6,11 +6,15 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../bridge/infrastructure/services/bridge_native_channel.dart';
+import '../../../bridge/infrastructure/services/bridge_navigation_source.dart';
 import '../../domain/entities/tripper_connection_state.dart';
 import '../../domain/entities/tripper_device.dart';
 import '../../domain/entities/tripper_gatt_info.dart';
 import '../../domain/services/tripper_ble_service.dart';
+import '../../domain/services/tripper_protocol.dart';
 import '../../domain/services/voice_navigation_service.dart';
+import '../../infrastructure/services/navigation_instruction_bridge.dart';
 import '../state/gpx_route_tracker.dart';
 import '../widgets/background_tracking_info_dialog.dart';
 
@@ -20,6 +24,7 @@ class TripperDiagnosticScreen extends StatefulWidget {
   final GpxRouteTracker? activeTracker;
   final TripperBleService bleService;
   final VoiceNavigationService? voiceService;
+  final NavigationInstructionBridge? navigationBridge;
   final bool autoCheckHardware;
 
   const TripperDiagnosticScreen({
@@ -27,6 +32,7 @@ class TripperDiagnosticScreen extends StatefulWidget {
     this.activeTracker,
     required this.bleService,
     this.voiceService,
+    this.navigationBridge,
     this.autoCheckHardware = true,
   });
 
@@ -50,6 +56,15 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   PermissionStatus _bleScanStatus = PermissionStatus.denied;
   PermissionStatus _bleConnectStatus = PermissionStatus.denied;
   BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+  BridgePermissionStatus _notificationPermissionStatus =
+      BridgePermissionStatus.unknown;
+  final BridgeNativeChannel _nativeChannel = BridgeNativeChannel();
+
+  // Puente Waze / Maps -> Tripper
+  late final NavigationInstructionBridge _bridge;
+  bool _ownsBridge = false;
+  StreamSubscription? _bridgeSub;
+  Timer? _telemetryTimer;
 
   // Estado de voz
   bool _isTestingVoice = false;
@@ -71,6 +86,21 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     _gattServices = List.from(widget.bleService.discoveredGattServices);
     _logs = List.from(widget.bleService.diagnosticLogs);
     _scanError = widget.bleService.lastScanError;
+
+    if (widget.navigationBridge != null) {
+      _bridge = widget.navigationBridge!;
+      _ownsBridge = false;
+    } else {
+      _bridge = NavigationInstructionBridge(
+        navigationSource: BridgeNavigationSource(nativeChannel: _nativeChannel),
+        bleService: widget.bleService,
+      );
+      _ownsBridge = true;
+    }
+
+    _bridgeSub = _bridge.events.listen((_) {
+      if (mounted) setState(() {});
+    });
 
     _stateSub = widget.bleService.stateStream.listen((state) {
       if (mounted) setState(() => _connectionState = state);
@@ -109,12 +139,23 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           if (mounted) setState(() => _adapterState = state);
         }, onError: (_) {});
       } catch (_) {}
+      _bridge.start();
+      _telemetryTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted && widget.bleService.connectedSince != null) {
+          setState(() {});
+        }
+      });
       _refreshHardwareAndPermissions();
     }
   }
 
   @override
   void dispose() {
+    _telemetryTimer?.cancel();
+    _bridgeSub?.cancel();
+    if (_ownsBridge) {
+      _bridge.dispose();
+    }
     _adapterStateSub?.cancel();
     _errorSub?.cancel();
     _stateSub?.cancel();
@@ -171,6 +212,14 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         );
       } catch (_) {}
 
+      BridgePermissionStatus notifPerm = BridgePermissionStatus.unknown;
+      try {
+        notifPerm = await _nativeChannel.checkNotificationPermission().timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () => BridgePermissionStatus.unknown,
+        );
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _isGpsServiceEnabled = gpsEnabled;
@@ -179,6 +228,7 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           _bleScanStatus = scanStatus;
           _bleConnectStatus = connectStatus;
           _adapterState = adState;
+          _notificationPermissionStatus = notifPerm;
           _isCheckingPermissions = false;
         });
       }
@@ -373,6 +423,826 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     }
   }
 
+  bool _hasCode147Error() {
+    final detail = widget.bleService.lastErrorDetail ?? '';
+    final scanErr = _scanError ?? '';
+    final stage = widget.bleService.lastErrorStage ?? '';
+    return detail.contains('147') ||
+        detail.contains('GATT_CONNECTION_TIMEOUT') ||
+        scanErr.contains('147') ||
+        stage.contains('147') ||
+        _logs.any(
+          (l) => l.contains('147') || l.contains('GATT_CONNECTION_TIMEOUT'),
+        );
+  }
+
+  Future<void> _showPinDialog() async {
+    final controller = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.backgroundCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.cardBorder),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.pin_rounded, color: AppColors.primaryGold, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'PIN Tripper Pod',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Si tu Tripper Pod muestra un código numérico de 6 dígitos en la pantalla redonda durante la vinculación, ingrésalo aquí para autenticar la sesión BLE.',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              style: const TextStyle(
+                color: AppColors.primaryGold,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.black.withValues(alpha: 0.5),
+                labelText: 'PIN de 6 dígitos',
+                labelStyle: const TextStyle(color: AppColors.textSecondary),
+                counterStyle: const TextStyle(color: AppColors.textSecondary),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.primaryGold),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryGold,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Enviar PIN'),
+          ),
+        ],
+      ),
+    );
+
+    if (pin != null && pin.isNotEmpty) {
+      final success = await widget.bleService.sendPin(pin);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'PIN de 6 dígitos enviado correctamente.'
+                  : 'Fallo al enviar PIN al dispositivo.',
+            ),
+            backgroundColor: success ? Colors.green : AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildSafetyNoticeCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade900.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blueGrey.shade600),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.two_wheeler_rounded,
+            color: AppColors.primaryGold,
+            size: 22,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CONDICIONES DE PRUEBA FÍSICA SEGURA',
+                  style: TextStyle(
+                    color: AppColors.primaryGold,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Realiza la sincronización con la motocicleta estacionada, ignición ON y el Tripper activo. REStelar opera en modo seguro sin modificar la ECU ni el velocímetro. No manipules el smartphone mientras conduces.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectionTelemetryCard() {
+    final dev = widget.bleService.connectedDevice;
+    final isReady = _connectionState.isReadyForNavigation;
+    final durationStr = widget.bleService.connectedSince != null
+        ? _formatDuration(
+            DateTime.now().difference(widget.bleService.connectedSince!),
+          )
+        : '00:00';
+    final lastHex = widget.bleService.lastPacketSentHex ?? 'Ninguno';
+    final lastRes = widget.bleService.lastTransmissionResult ?? 'Sin envíos';
+    final lastStage = widget.bleService.lastErrorStage;
+    final lastDetail = widget.bleService.lastErrorDetail;
+
+    Color badgeColor;
+    if (isReady) {
+      badgeColor = Colors.greenAccent;
+    } else if (_connectionState == TripperConnectionState.connecting ||
+        _connectionState == TripperConnectionState.gattConnected ||
+        _connectionState == TripperConnectionState.servicesDiscovered ||
+        _connectionState == TripperConnectionState.characteristicIdentified ||
+        _connectionState == TripperConnectionState.authPending) {
+      badgeColor = AppColors.primaryGold;
+    } else if (_connectionState == TripperConnectionState.error) {
+      badgeColor = Colors.redAccent;
+    } else {
+      badgeColor = AppColors.textSecondary;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isReady
+              ? Colors.greenAccent.withValues(alpha: 0.4)
+              : AppColors.cardBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.sensors_rounded,
+                color: AppColors.secondaryCyan,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Telemetría de Conexión BLE',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  _connectionState.displayName.toUpperCase(),
+                  style: TextStyle(
+                    color: badgeColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildMetricChip(
+                label: 'Dispositivo',
+                value: dev?.name ?? 'Sin enlace',
+                icon: Icons.two_wheeler_rounded,
+              ),
+              const SizedBox(width: 8),
+              _buildMetricChip(
+                label: 'Dirección MAC',
+                value: dev?.id ?? 'No enlazado',
+                icon: Icons.fingerprint_rounded,
+              ),
+              const SizedBox(width: 8),
+              _buildMetricChip(
+                label: 'Señal RSSI',
+                value: dev != null ? '${dev.rssi} dBm' : 'N/A',
+                icon: Icons.signal_cellular_alt_rounded,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildMetricChip(
+                label: 'Enlace GATT',
+                value:
+                    (_connectionState == TripperConnectionState.gattConnected ||
+                        isReady)
+                    ? 'GATT ACTIVO'
+                    : 'SIN CONEXIÓN',
+                icon: Icons.link_rounded,
+              ),
+              const SizedBox(width: 8),
+              _buildMetricChip(
+                label: 'Servicios GATT',
+                value: '${_gattServices.length} servicios',
+                icon: Icons.account_tree_outlined,
+              ),
+              const SizedBox(width: 8),
+              _buildMetricChip(
+                label: 'Tiempo Enlace',
+                value: durationStr,
+                icon: Icons.timer_outlined,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Última trama enviada (20B HEX):',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      lastRes,
+                      style: TextStyle(
+                        color:
+                            lastRes.contains('Aceptada') ||
+                                lastRes.contains('OK')
+                            ? Colors.greenAccent
+                            : AppColors.textSecondary,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  lastHex,
+                  style: const TextStyle(
+                    color: AppColors.secondaryCyan,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (lastStage != null || lastDetail != null) ...[
+                  const Divider(color: Colors.white12, height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Colors.redAccent,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Etapa: ${lastStage ?? "N/A"} — ${lastDetail ?? ""}',
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCode147TroubleshootingCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade900.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orangeAccent,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'DIAGNÓSTICO: Timeout de Conexión GATT (Código 147)',
+                  style: TextStyle(
+                    color: Colors.orangeAccent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Causa confirmada en hardware: El Tripper Pod original de Royal Enfield únicamente emite anuncios BLE durante 30 a 120 segundos tras girar la llave a ON. Pasado ese tiempo, cualquier conexión finaliza en timeout 147.',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Pasos de recuperación inmediata:',
+            style: TextStyle(
+              color: AppColors.primaryGold,
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _buildStepRow(
+            '1',
+            'Gira la llave de la moto a OFF y espera 3 segundos.',
+          ),
+          _buildStepRow(
+            '2',
+            'Gira la llave a ON nuevamente hasta ver la pantalla circular encendida.',
+          ),
+          _buildStepRow(
+            '3',
+            'Si RE_DISP quedó enlazado a medias, ve a Ajustes > Bluetooth de Android y toca "Desvincular / Olvidar".',
+          ),
+          _buildStepRow(
+            '4',
+            'Fuerza el cierre de la app oficial de Royal Enfield (para evitar conflicto de exclusividad BLE).',
+          ),
+          _buildStepRow(
+            '5',
+            'Toca "Buscar Tripper" en REStelar y pulsa "Conectar" inmediatamente.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManualTestingSection() {
+    final bool isReady = _connectionState.isReadyForNavigation;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.send_rounded, color: AppColors.primaryGold, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Pruebas de Intercambio Real con el Tablero',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Envía tramas certificadas de 20 bytes con CRC16 para verificar que el hardware del Tripper responde físicamente.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11.5,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isReady
+                      ? AppColors.primaryGold
+                      : Colors.white12,
+                  foregroundColor: Colors.black,
+                  minimumSize: const Size(0, 38),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.navigation_rounded, size: 16),
+                label: const Text(
+                  'Enviar maniobra prueba (500m recto)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                onPressed: isReady
+                    ? () async {
+                        final ok = await widget.bleService.sendTestMessage();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ok
+                                    ? 'Maniobra de prueba enviada al Tripper Pod.'
+                                    : 'Fallo al transmitir maniobra de prueba.',
+                              ),
+                              backgroundColor: ok
+                                  ? Colors.green
+                                  : AppColors.error,
+                            ),
+                          );
+                        }
+                      }
+                    : null,
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.secondaryCyan,
+                  side: BorderSide(
+                    color: isReady ? AppColors.secondaryCyan : Colors.white24,
+                  ),
+                  minimumSize: const Size(0, 38),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.access_time_rounded, size: 16),
+                label: const Text(
+                  'Sincronizar reloj (CMD 0x50)',
+                  style: TextStyle(fontSize: 12),
+                ),
+                onPressed: isReady
+                    ? () async {
+                        final now = DateTime.now();
+                        final timePacket = TripperProtocol.buildSetTimePacket(
+                          now.hour,
+                          now.minute,
+                          false,
+                        );
+                        final ok = await widget.bleService.sendRawPacket(
+                          timePacket,
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ok
+                                    ? 'Comando de reloj 0x50 sincronizado con el Tripper.'
+                                    : 'Error al enviar comando de hora.',
+                              ),
+                              backgroundColor: ok
+                                  ? Colors.green
+                                  : AppColors.error,
+                            ),
+                          );
+                        }
+                      }
+                    : null,
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryGold,
+                  side: const BorderSide(color: AppColors.primaryGold),
+                  minimumSize: const Size(0, 38),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.pin_rounded, size: 16),
+                label: const Text(
+                  'Ingresar PIN / Handshake',
+                  style: TextStyle(fontSize: 12),
+                ),
+                onPressed: _showPinDialog,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWazeBridgeMonitorSection() {
+    final lastInst = _bridge.lastInstruction;
+    final lastEvt = _bridge.lastEvent;
+    final isGranted =
+        _notificationPermissionStatus == BridgePermissionStatus.granted;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.alt_route_rounded,
+                color: AppColors.secondaryCyan,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Monitor Waze → REStelar → Tripper',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _bridge.isListening
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.white10,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: _bridge.isListening
+                        ? Colors.greenAccent
+                        : Colors.white24,
+                  ),
+                ),
+                child: Text(
+                  _bridge.isListening ? 'ESCUCHANDO' : 'DETENIDO',
+                  style: TextStyle(
+                    color: _bridge.isListening
+                        ? Colors.greenAccent
+                        : AppColors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Captura notificaciones de navegación de Waze y Google Maps en segundo plano para transmitirlas al Tripper.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11.5,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildStatusPill(
+                label: 'Acceso Notificaciones',
+                status: isGranted ? 'CONCEDIDO' : 'PENDIENTE',
+                isOk: isGranted,
+              ),
+              if (!isGranted) ...[
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryGold,
+                    foregroundColor: Colors.black,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(
+                    Icons.notifications_active_rounded,
+                    size: 14,
+                  ),
+                  label: const Text(
+                    'Conceder permiso',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  onPressed: () =>
+                      _nativeChannel.openNotificationAccessSettings(),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (lastInst == null)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Inicia una ruta en Waze para ver las indicaciones capturadas aquí.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondaryCyan.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          lastInst.source.displayName,
+                          style: const TextStyle(
+                            color: AppColors.secondaryCyan,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        lastInst.distanceMeters != null
+                            ? '${lastInst.distanceMeters!.round()} m'
+                            : 'Sin distancia',
+                        style: const TextStyle(
+                          color: AppColors.primaryGold,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    lastInst.rawTitle ??
+                        lastInst.destinationStreet ??
+                        'Sin título',
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (lastInst.rawText.isNotEmpty)
+                    Text(
+                      lastInst.rawText,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  const Divider(color: Colors.white12, height: 14),
+                  Row(
+                    children: [
+                      const Text(
+                        'Adaptación Tripper: ',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                      Text(
+                        (lastEvt?.transmittedToTripper ?? false)
+                            ? 'TRANSMITIDO A PANTALLA'
+                            : (lastEvt?.adaptationResult.isSupported ?? false)
+                            ? 'ESPERANDO CONEXIÓN BLE'
+                            : (lastEvt != null
+                                  ? 'NO COMPATIBLE'
+                                  : 'PROCESANDO'),
+                        style: TextStyle(
+                          color: (lastEvt?.transmittedToTripper ?? false)
+                              ? Colors.greenAccent
+                              : AppColors.primaryGold,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (lastEvt != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        lastEvt.adaptationResult.description,
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tracker = widget.activeTracker;
@@ -420,11 +1290,23 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildSafetyNoticeCard(),
+            const SizedBox(height: 14),
             _buildHardwareAndPermissionsSection(),
+            const SizedBox(height: 14),
+            _buildConnectionTelemetryCard(),
+            if (_hasCode147Error()) ...[
+              const SizedBox(height: 14),
+              _buildCode147TroubleshootingCard(),
+            ],
             const SizedBox(height: 14),
             _buildGpsStatusSection(tracker),
             const SizedBox(height: 14),
             _buildBleSection(),
+            const SizedBox(height: 14),
+            _buildManualTestingSection(),
+            const SizedBox(height: 14),
+            _buildWazeBridgeMonitorSection(),
             const SizedBox(height: 14),
             _buildGattServicesSection(),
             const SizedBox(height: 14),
@@ -443,6 +1325,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     final bool isLocGranted =
         _locationPermission == LocationPermission.whileInUse ||
         _locationPermission == LocationPermission.always;
+    final bool isNotifGranted =
+        _notificationPermissionStatus == BridgePermissionStatus.granted;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -514,11 +1398,24 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildStatusPill(
+                label: 'Notificaciones Waze',
+                status: isNotifGranted ? 'CONCEDIDO' : 'PENDIENTE',
+                isOk: isNotifGranted,
+              ),
+            ],
+          ),
           if (!isLocGranted ||
               !_isGpsServiceEnabled ||
-              !_isBluetoothAvailable) ...[
+              !_isBluetoothAvailable ||
+              !isNotifGranted) ...[
             const SizedBox(height: 10),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 if (!_isGpsServiceEnabled)
                   TextButton.icon(
@@ -557,6 +1454,26 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                       ),
                     ),
                     onPressed: () => Geolocator.openAppSettings(),
+                  ),
+                if (!isNotifGranted)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(
+                      Icons.notifications_active_rounded,
+                      size: 14,
+                      color: AppColors.primaryGold,
+                    ),
+                    label: const Text(
+                      'Permiso Notificaciones',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primaryGold,
+                      ),
+                    ),
+                    onPressed: () =>
+                        _nativeChannel.openNotificationAccessSettings(),
                   ),
               ],
             ),
@@ -1790,9 +2707,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           const SizedBox(height: 10),
           _buildStageRow(
             stageNum: '1',
-            title: 'Detección BLE',
+            title: 'Detección BLE (RE_DISP)',
             description:
-                'Escaneo pasivo/activo de balizas y filtrado de candidatos.',
+                'Identificación de RE_DISP, prefijo OUI NXP 00:60:37 y servicio 01FF0100.',
             status: hasCandidates
                 ? 'DETECTADO'
                 : (_devices.isNotEmpty ? 'DISPOSITIVOS' : 'PENDIENTE'),
@@ -1801,29 +2718,33 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           const Divider(color: Colors.white12, height: 16),
           _buildStageRow(
             stageNum: '2',
-            title: 'Conexión GATT',
+            title: 'Conexión GATT (Wireless UART)',
             description:
-                'Establecimiento del enlace y lectura de servicios/características.',
+                'Enlace GATT sobre servicio 01ff0100 y característica 01ff0101.',
             status: isConnected ? 'ENLAZADO' : 'PENDIENTE',
             isSuccess: isConnected,
           ),
           const Divider(color: Colors.white12, height: 16),
           _buildStageRow(
             stageNum: '3',
-            title: 'Emparejamiento / Bonding PIN',
+            title: 'Handshake, Reloj & Keepalive',
             description:
-                'Vinculación a nivel de sistema operativo Android con código numérico.',
-            status: 'GESTIONADO POR ANDROID',
-            isSuccess: isConnected,
+                'Trama resume (0x21 0x00), ajuste horario (0x50) y latido periódico cada 2s (0x03).',
+            status: _connectionState.isReadyForNavigation
+                ? 'ACTIVO (VERIFICADO)'
+                : 'PENDIENTE',
+            isSuccess: _connectionState.isReadyForNavigation,
           ),
           const Divider(color: Colors.white12, height: 16),
           _buildStageRow(
             stageNum: '4',
-            title: 'Protocolo de Pantalla Tripper',
+            title: 'Protocolo de Navegación 20B',
             description:
-                'Envío seguro de maniobras. Requiere protocolo certificado de RE.',
-            status: 'MODO SEGURO ACTIVO',
-            isSuccess: false,
+                'Envío de maniobras (0x10 0x11), distancias y ETA con CRC16/CCITT-FALSE verificado.',
+            status: widget.bleService.lastTransmissionResult != null
+                ? 'TRANSMISIÓN PROBADA'
+                : 'LISTO PARA ENVÍO',
+            isSuccess: widget.bleService.lastTransmissionResult != null,
             highlightColor: AppColors.primaryGold,
           ),
           const SizedBox(height: 12),

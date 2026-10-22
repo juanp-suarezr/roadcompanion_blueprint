@@ -48,8 +48,35 @@ abstract class TripperBleService {
   /// Desconecta de forma segura el enlace activo.
   Future<void> disconnect();
 
-  /// Envía experimentalmente una maniobra de navegación (solo tras conexión validada).
+  /// Envía una maniobra de navegación hacia el display del Tripper Pod.
   Future<bool> sendManeuver(TripperManeuverPayload maneuver);
+
+  /// Envía una trama binaria de 20 bytes directamente a la característica NXP Wireless UART.
+  Future<bool> sendRawPacket(List<int> bytes) async => false;
+
+  /// Envía un mensaje de prueba controlado y validado para verificar la aceptación física del Pod.
+  Future<bool> sendTestMessage() async => false;
+
+  /// Envía el PIN de emparejamiento ingresado por el usuario (CMD 0x20).
+  Future<bool> sendPin(String pin) async => false;
+
+  /// Última trama transmitida en formato hexadecimal legible (ej. "10 11 15 00 FA 01 ...").
+  String? get lastPacketSentHex => null;
+
+  /// Resultado o confirmación de la última transmisión efectuada.
+  String? get lastTransmissionResult => null;
+
+  /// Momento exacto en que se estableció la conexión física GATT.
+  DateTime? get connectedSince => null;
+
+  /// Contador acumulado de desconexiones observadas durante la sesión.
+  int get disconnectCount => 0;
+
+  /// Etapa exacta donde ocurrió el último error de conexión o GATT.
+  String? get lastErrorStage => null;
+
+  /// Detalle técnico del último error presentado.
+  String? get lastErrorDetail => null;
 
   /// Último error registrado durante el escaneo o procesamiento de dispositivos BLE.
   String? get lastScanError => null;

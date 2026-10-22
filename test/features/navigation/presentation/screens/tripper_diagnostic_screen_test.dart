@@ -105,6 +105,33 @@ class MockTripperBleService implements TripperBleService {
   }
 
   @override
+  DateTime? get connectedSince => null;
+
+  @override
+  int get disconnectCount => 0;
+
+  @override
+  String? get lastErrorDetail => null;
+
+  @override
+  String? get lastErrorStage => null;
+
+  @override
+  String? get lastPacketSentHex => null;
+
+  @override
+  String? get lastTransmissionResult => null;
+
+  @override
+  Future<bool> sendPin(String pin) async => true;
+
+  @override
+  Future<bool> sendRawPacket(List<int> bytes) async => true;
+
+  @override
+  Future<bool> sendTestMessage() async => true;
+
+  @override
   Future<bool> sendManeuver(TripperManeuverPayload maneuver) async => true;
 
   @override
@@ -673,6 +700,91 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Muestra tarjeta de telemetría, aviso de seguridad y monitor Waze',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('CONDICIONES DE PRUEBA FÍSICA SEGURA'),
+          findsOneWidget,
+        );
+        expect(find.text('Telemetría de Conexión BLE'), findsOneWidget);
+        expect(find.text('Monitor Waze → REStelar → Tripper'), findsOneWidget);
+        expect(
+          find.text('Pruebas de Intercambio Real con el Tablero'),
+          findsOneWidget,
+        );
+        expect(find.text('Ingresar PIN / Handshake'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Muestra guía detallada de resolución ante GATT_CONNECTION_TIMEOUT código 147',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Al inicio no hay error 147
+        expect(
+          find.text('DIAGNÓSTICO: Timeout de Conexión GATT (Código 147)'),
+          findsNothing,
+        );
+
+        // Emitir error con código 147
+        bleService.emitScanError(
+          'Fallo enlace GATT: GATT_CONNECTION_TIMEOUT (código 147)',
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('DIAGNÓSTICO: Timeout de Conexión GATT (Código 147)'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('anuncios BLE durante 30 a 120 segundos'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining(
+            'Gira la llave de la moto a OFF y espera 3 segundos',
+          ),
+          findsOneWidget,
+        );
       },
     );
   });
