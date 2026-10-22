@@ -143,10 +143,7 @@ void main() {
                   ],
                 },
                 'legs': [
-                  {
-                    'summary': 'Autopista Central',
-                    'steps': [],
-                  },
+                  {'summary': 'Autopista Central', 'steps': []},
                 ],
               },
               {
@@ -160,10 +157,7 @@ void main() {
                   ],
                 },
                 'legs': [
-                  {
-                    'summary': 'Vía Panamericana',
-                    'steps': [],
-                  },
+                  {'summary': 'Vía Panamericana', 'steps': []},
                 ],
               },
               {
@@ -177,10 +171,7 @@ void main() {
                   ],
                 },
                 'legs': [
-                  {
-                    'summary': 'Avenida del Río',
-                    'steps': [],
-                  },
+                  {'summary': 'Avenida del Río', 'steps': []},
                 ],
               },
             ],
@@ -206,8 +197,14 @@ void main() {
         expect(routes[0].summary, equals('Autopista Central'));
         expect(routes[0].isFastest, isTrue);
         expect(routes[0].isShortest, isFalse);
-        expect(routes[0].durationDiff, isNull); // Es la más rápida (sin exceso de tiempo)
-        expect(routes[0].distanceDiffKm, closeTo(2.0, 0.01)); // +2.0 km vs la más corta
+        expect(
+          routes[0].durationDiff,
+          isNull,
+        ); // Es la más rápida (sin exceso de tiempo)
+        expect(
+          routes[0].distanceDiffKm,
+          closeTo(2.0, 0.01),
+        ); // +2.0 km vs la más corta
 
         // Ruta 2 (Más corta)
         expect(routes[1].routeName, equals('Ruta 2'));
@@ -215,7 +212,10 @@ void main() {
         expect(routes[1].isFastest, isFalse);
         expect(routes[1].isShortest, isTrue);
         expect(routes[1].durationDiff!.inMinutes, equals(2)); // +2 min
-        expect(routes[1].distanceDiffKm, isNull); // Es la más corta (sin exceso de km)
+        expect(
+          routes[1].distanceDiffKm,
+          isNull,
+        ); // Es la más corta (sin exceso de km)
 
         // Ruta 3 (Alternativa secundaria)
         expect(routes[2].routeName, equals('Ruta 3'));
@@ -244,10 +244,7 @@ void main() {
                   ],
                 },
                 'legs': [
-                  {
-                    'summary': 'Única Vía',
-                    'steps': [],
-                  },
+                  {'summary': 'Única Vía', 'steps': []},
                 ],
               },
             ],
@@ -271,34 +268,38 @@ void main() {
       },
     );
 
-    test('6. Lanza InvalidRouteGeometryException ante geometría vacía o corrupta', () async {
-      final mockClient = MockClient((_) async {
-        final sampleOsrm = jsonEncode({
-          'code': 'Ok',
-          'routes': [
-            {
-              'distance': 0.0,
-              'duration': 0.0,
-              'geometry': {
-                'coordinates': [], // Vacío
+    test(
+      '6. Lanza InvalidRouteGeometryException ante geometría vacía o corrupta',
+      () async {
+        final mockClient = MockClient((_) async {
+          final sampleOsrm = jsonEncode({
+            'code': 'Ok',
+            'routes': [
+              {
+                'distance': 0.0,
+                'duration': 0.0,
+                'geometry': {
+                  'coordinates': [], // Vacío
+                },
+                'legs': [],
               },
-              'legs': [],
-            },
-          ],
+            ],
+          });
+          return http.Response(
+            sampleOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
-        return http.Response(
-          sampleOsrm,
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      });
 
-      final service = OsrmRoutingService(client: mockClient);
-      expect(
-        () => service.calculateRoute(origin: origin, destination: destination),
-        throwsA(isA<InvalidRouteGeometryException>()),
-      );
-    });
+        final service = OsrmRoutingService(client: mockClient);
+        expect(
+          () =>
+              service.calculateRoute(origin: origin, destination: destination),
+          throwsA(isA<InvalidRouteGeometryException>()),
+        );
+      },
+    );
 
     test(
       '7. Caso 5 (Urbano): Acceso privado más corto vs alternativa pública más larga. Prioriza la pública como Ruta 1 y no premia la privada',
@@ -380,18 +381,35 @@ void main() {
         expect(recommendedRoute.summary, equals('Avenida Circunvalar Pública'));
         expect(recommendedRoute.isPubliclyPassable, isTrue);
         expect(recommendedRoute.isConfirmedRestricted, isFalse);
-        expect(recommendedRoute.isFastest, isTrue); // La más rápida entre las públicas
-        expect(recommendedRoute.isShortest, isTrue); // La más corta entre las públicas
+        expect(
+          recommendedRoute.isFastest,
+          isTrue,
+        ); // La más rápida entre las públicas
+        expect(
+          recommendedRoute.isShortest,
+          isTrue,
+        ); // La más corta entre las públicas
 
         // La Ruta 2 es el atajo privado con cerrojo
         final restrictedShortcut = routes[1];
         expect(restrictedShortcut.routeName, equals('Ruta 2'));
-        expect(restrictedShortcut.summary, equals('Atajo por Terreno Empresa Privada'));
+        expect(
+          restrictedShortcut.summary,
+          equals('Atajo por Terreno Empresa Privada'),
+        );
         expect(restrictedShortcut.isConfirmedRestricted, isTrue);
         expect(restrictedShortcut.isPubliclyPassable, isFalse);
-        expect(restrictedShortcut.isFastest, isFalse); // No se premia con medallas
+        expect(
+          restrictedShortcut.isFastest,
+          isFalse,
+        ); // No se premia con medallas
         expect(restrictedShortcut.isShortest, isFalse);
-        expect(restrictedShortcut.validation.warnings.any((w) => w.contains('access=private')), isTrue);
+        expect(
+          restrictedShortcut.validation.warnings.any(
+            (w) => w.contains('access=private'),
+          ),
+          isTrue,
+        );
       },
     );
 
@@ -467,7 +485,12 @@ void main() {
         expect(routes[0].isPubliclyPassable, isTrue);
         expect(routes[0].summary, equals('Vía Departamental Libre'));
         expect(routes[1].isConfirmedRestricted, isTrue);
-        expect(routes[1].validation.warnings.any((w) => w.contains('portón/cerrojo')), isTrue);
+        expect(
+          routes[1].validation.warnings.any(
+            (w) => w.contains('portón/cerrojo'),
+          ),
+          isTrue,
+        );
       },
     );
 
@@ -488,19 +511,23 @@ void main() {
                 'geometry': {
                   'coordinates': [
                     [-75.5173, 5.0688],
-                    [-75.4860, 5.0375], // Último punto vial (~460m de distancia geodésica)
+                    [
+                      -75.4860,
+                      5.0375,
+                    ], // Último punto vial (~460m de distancia geodésica)
                   ],
                 },
                 'legs': [
-                  {
-                    'summary': 'Camino Rural Final',
-                    'steps': [],
-                  },
+                  {'summary': 'Camino Rural Final', 'steps': []},
                 ],
               },
             ],
           });
-          return http.Response(sampleOsrm, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);
@@ -511,7 +538,10 @@ void main() {
 
         expect(route.validation.hasDestinationGap, isTrue);
         expect(route.validation.destinationGapMeters, greaterThan(300.0));
-        expect(route.validation.warnings.any((w) => w.contains('finaliza a')), isTrue);
+        expect(
+          route.validation.warnings.any((w) => w.contains('finaliza a')),
+          isTrue,
+        );
       },
     );
 
@@ -535,15 +565,16 @@ void main() {
                   ],
                 },
                 'legs': [
-                  {
-                    'summary': 'Carretera de un solo valle',
-                    'steps': [],
-                  },
+                  {'summary': 'Carretera de un solo valle', 'steps': []},
                 ],
               },
             ],
           });
-          return http.Response(sampleOsrm, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);
@@ -574,7 +605,9 @@ void main() {
                     [-75.4820, 5.0345],
                   ],
                 },
-                'legs': [{'summary': 'Vía Principal', 'steps': []}],
+                'legs': [
+                  {'summary': 'Vía Principal', 'steps': []},
+                ],
               },
               {
                 'distance': 12000.0,
@@ -585,11 +618,17 @@ void main() {
                     [-75.4820, 5.0345],
                   ],
                 },
-                'legs': [{'summary': 'Vía Alterna', 'steps': []}],
+                'legs': [
+                  {'summary': 'Vía Alterna', 'steps': []},
+                ],
               },
             ],
           });
-          return http.Response(sampleOsrm, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);
@@ -622,7 +661,9 @@ void main() {
                     [-75.4820, 5.0345],
                   ],
                 },
-                'legs': [{'summary': 'Ruta Válida', 'steps': []}],
+                'legs': [
+                  {'summary': 'Ruta Válida', 'steps': []},
+                ],
               },
               {
                 'distance': 9000.0,
@@ -633,11 +674,17 @@ void main() {
                     [-75.5173, 5.0688],
                   ],
                 },
-                'legs': [{'summary': 'Ruta Corrupta', 'steps': []}],
+                'legs': [
+                  {'summary': 'Ruta Corrupta', 'steps': []},
+                ],
               },
             ],
           });
-          return http.Response(sampleOsrm, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);
@@ -672,7 +719,10 @@ void main() {
                     'coordinates': [
                       [-75.69611, 4.81333],
                       [-75.672512, 4.833517],
-                      [-75.672461, 4.833360], // Coordenada problemática del portón
+                      [
+                        -75.672461,
+                        4.833360,
+                      ], // Coordenada problemática del portón
                       [-75.672273, 4.833395],
                       [-75.67234, 4.83667],
                     ],
@@ -711,7 +761,11 @@ void main() {
                 },
               ],
             });
-            return http.Response(sampleRestrictedOsrm, 200, headers: {'content-type': 'application/json'});
+            return http.Response(
+              sampleRestrictedOsrm,
+              200,
+              headers: {'content-type': 'application/json'},
+            );
           } else {
             // Segunda llamada: OSRM calcula el desvío público solicitado por ESTELA vía Av. Simón Bolívar / Retorno / Calle 36
             final samplePublicBypassOsrm = jsonEncode({
@@ -724,9 +778,15 @@ void main() {
                     'coordinates': [
                       [-75.69611, 4.81333],
                       [-75.6710, 4.8350],
-                      [-75.66653, 4.83906], // Retorno público Postobón / Servientrega
-                      [-75.6715, 4.8365],  // Calle 36 hacia Carrera 15
-                      [-75.67234, 4.83667], // Destino exacto en Barrio Guadalupe
+                      [
+                        -75.66653,
+                        4.83906,
+                      ], // Retorno público Postobón / Servientrega
+                      [-75.6715, 4.8365], // Calle 36 hacia Carrera 15
+                      [
+                        -75.67234,
+                        4.83667,
+                      ], // Destino exacto en Barrio Guadalupe
                     ],
                   },
                   'legs': [
@@ -765,7 +825,11 @@ void main() {
                 },
               ],
             });
-            return http.Response(samplePublicBypassOsrm, 200, headers: {'content-type': 'application/json'});
+            return http.Response(
+              samplePublicBypassOsrm,
+              200,
+              headers: {'content-type': 'application/json'},
+            );
           }
         });
 
@@ -795,7 +859,12 @@ void main() {
         if (routes.length > 1) {
           final restrictedAlt = routes.last;
           expect(restrictedAlt.isConfirmedRestricted, isTrue);
-          expect(restrictedAlt.validation.warnings.any((w) => w.contains('Portón privado')), isTrue);
+          expect(
+            restrictedAlt.validation.warnings.any(
+              (w) => w.contains('Portón privado'),
+            ),
+            isTrue,
+          );
         }
       },
     );
@@ -825,7 +894,9 @@ void main() {
                 'legs': [
                   {
                     'summary': 'Carrera 7',
-                    'annotation': {'nodes': [5001, 5002, 5003]},
+                    'annotation': {
+                      'nodes': [5001, 5002, 5003],
+                    },
                     'steps': [
                       {
                         'name': 'Carrera 7',
@@ -843,7 +914,11 @@ void main() {
               },
             ],
           });
-          return http.Response(sampleNormalOsrm, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleNormalOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);
@@ -879,7 +954,9 @@ void main() {
                 'legs': [
                   {
                     'summary': 'Vía Rural sin categorizar',
-                    'annotation': {'nodes': [8001, 8002]},
+                    'annotation': {
+                      'nodes': [8001, 8002],
+                    },
                     'steps': [
                       {
                         'name': 'Vía Rural',
@@ -894,7 +971,11 @@ void main() {
               },
             ],
           });
-          return http.Response(sampleUnconfirmedOsrm, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleUnconfirmedOsrm,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);
@@ -906,7 +987,9 @@ void main() {
         expect(routes.first.hasUnconfirmedTransitability, isTrue);
         expect(routes.first.isConfirmedRestricted, isFalse);
         expect(
-          routes.first.validation.warnings.any((w) => w.contains('Información de acceso no confirmada')),
+          routes.first.validation.warnings.any(
+            (w) => w.contains('Información de acceso no confirmada'),
+          ),
           isTrue,
         );
       },
@@ -931,7 +1014,9 @@ void main() {
                 'legs': [
                   {
                     'summary': 'Autopista Principal',
-                    'annotation': {'nodes': [101, 102]},
+                    'annotation': {
+                      'nodes': [101, 102],
+                    },
                     'steps': [
                       {
                         'name': 'Autopista Principal',
@@ -954,7 +1039,9 @@ void main() {
                 'legs': [
                   {
                     'summary': 'Avenida Secundaria',
-                    'annotation': {'nodes': [201, 202]},
+                    'annotation': {
+                      'nodes': [201, 202],
+                    },
                     'steps': [
                       {
                         'name': 'Avenida Secundaria',
@@ -977,7 +1064,9 @@ void main() {
                 'legs': [
                   {
                     'summary': 'Variante Periférica',
-                    'annotation': {'nodes': [301, 302]},
+                    'annotation': {
+                      'nodes': [301, 302],
+                    },
                     'steps': [
                       {
                         'name': 'Variante Periférica',
@@ -990,7 +1079,11 @@ void main() {
               },
             ],
           });
-          return http.Response(sampleMultiRoutes, 200, headers: {'content-type': 'application/json'});
+          return http.Response(
+            sampleMultiRoutes,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         });
 
         final service = OsrmRoutingService(client: mockClient);

@@ -70,7 +70,9 @@ class AccessRestrictionRecord {
 class RoadAccessRestrictionRegistry {
   final List<AccessRestrictionRecord> _records = [];
 
-  RoadAccessRestrictionRegistry({List<AccessRestrictionRecord>? initialRecords}) {
+  RoadAccessRestrictionRegistry({
+    List<AccessRestrictionRecord>? initialRecords,
+  }) {
     if (initialRecords != null) {
       _records.addAll(initialRecords);
     } else {

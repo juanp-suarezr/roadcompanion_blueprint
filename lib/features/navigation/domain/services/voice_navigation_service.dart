@@ -38,6 +38,9 @@ abstract class VoiceNavigationService {
   /// Mensaje descriptivo del estado o causa del error.
   String? get statusMessage;
 
+  /// Última instrucción de voz enviada al motor TTS.
+  String? get lastSpokenText;
+
   /// Stream de cambios en el estado del servicio de voz.
   Stream<VoiceServiceStatus> get statusStream;
 
@@ -73,4 +76,3 @@ abstract class VoiceNavigationService {
   /// Libera los recursos del motor de voz.
   void dispose();
 }
-

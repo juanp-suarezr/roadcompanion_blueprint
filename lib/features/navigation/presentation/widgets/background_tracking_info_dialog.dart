@@ -25,7 +25,11 @@ class BackgroundTrackingInfoDialog extends StatelessWidget {
       ),
       title: Row(
         children: [
-          const Icon(Icons.satellite_alt_rounded, color: AppColors.primaryGold, size: 24),
+          const Icon(
+            Icons.satellite_alt_rounded,
+            color: AppColors.primaryGold,
+            size: 24,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -46,7 +50,11 @@ class BackgroundTrackingInfoDialog extends StatelessWidget {
           children: [
             const Text(
               'Para mantener el seguimiento activo cuando apagues la pantalla o cambies de aplicación, REstelar utiliza un servicio en primer plano de Android.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 14),
             _buildInfoItem(
@@ -91,7 +99,9 @@ class BackgroundTrackingInfoDialog extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primaryGold,
             foregroundColor: AppColors.backgroundBlack,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text(

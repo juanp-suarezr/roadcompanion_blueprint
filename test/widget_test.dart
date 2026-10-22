@@ -47,9 +47,30 @@ void main() {
       expect(find.text('Pantalla externa: '), findsOneWidget);
       expect(find.text('No conectada'), findsOneWidget);
       expect(find.text('Navegación'), findsOneWidget);
+      expect(find.text('Ir ahora'), findsOneWidget);
+      expect(find.text('Planificador de Viaje'), findsOneWidget);
       expect(find.text('Mis viajes'), findsOneWidget);
       expect(find.text('Motocicleta'), findsOneWidget);
       expect(find.text('Ajustes'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Navega a Ir ahora y renderiza la pantalla de navegación rápida',
+    (WidgetTester tester) async {
+      await pumpApp(tester);
+
+      final irAhoraCard = find.text('Ir ahora');
+      expect(irAhoraCard, findsOneWidget);
+      await tester.tap(irAhoraCard);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.text('Navegación rápida directa hacia tu destino'),
+        findsOneWidget,
+      );
+      expect(find.text('Mi ubicación actual'), findsOneWidget);
     },
   );
 

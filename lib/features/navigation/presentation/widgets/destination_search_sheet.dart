@@ -344,7 +344,9 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14.0,
-                      color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+                      color: isDark
+                          ? AppColors.coldWhite
+                          : AppColors.primaryTextLight,
                     ),
                   ),
                   const SizedBox(height: 6.0),
@@ -1009,7 +1011,9 @@ bool matchesCategory(Destination d, String query) {
       q.contains('mecánic') ||
       q.contains('motos') ||
       q.contains('repuestos')) {
-    if (cat == 'car_repair' || cat == 'motorcycle' || cat == 'motorcycle_repair') {
+    if (cat == 'car_repair' ||
+        cat == 'motorcycle' ||
+        cat == 'motorcycle_repair') {
       return true;
     }
     if (title.contains('taller') ||
@@ -1107,12 +1111,24 @@ List<Destination> rankDestinations({
   // Modo Lugar Específico (ej. "Armenia", "Salento", "Manizales Centro"):
   int matchTier(Destination d) {
     final title = d.title.trim().toLowerCase();
-    if (title == cleanQuery) return 0; // Coincidencia exacta de nombre
-    if (title.startsWith(cleanQuery)) return 1; // Empieza con el término
-    if (title.contains(cleanQuery)) return 2; // Contiene el término en el título
+    if (title == cleanQuery) {
+      return 0; // Coincidencia exacta de nombre
+    }
+
+    if (title.startsWith(cleanQuery)) {
+      return 1; // Empieza con el término
+    }
+
+    if (title.contains(cleanQuery)) {
+      return 2; // Contiene el término en el título
+    }
     final subtitle = d.subtitle.trim().toLowerCase();
-    if (subtitle.contains(cleanQuery)) return 3; // Aparece en el subtítulo (municipio, vía)
+    if (subtitle.contains(cleanQuery)) {
+      return 3; // Aparece en el subtítulo (municipio, vía)
+    }
     return 4; // Otros
+
+
   }
 
   sorted.sort((a, b) {

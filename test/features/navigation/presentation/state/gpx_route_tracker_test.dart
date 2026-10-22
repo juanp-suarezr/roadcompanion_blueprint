@@ -60,6 +60,11 @@ class FakeLocationService implements LocationService {
     );
   }
 
+  @override
+  Future<GpsPosition?> getCurrentPosition({
+    Duration timeLimit = const Duration(seconds: 8),
+  }) async => null;
+
   void dispose() {
     _controller.close();
   }
@@ -445,7 +450,9 @@ void main() {
           clock: () => simulatedTime,
         );
 
-        final started = await tracker.startTracking(enableBackgroundTracking: true);
+        final started = await tracker.startTracking(
+          enableBackgroundTracking: true,
+        );
         expect(started, isTrue);
         expect(tracker.isBackgroundEnabled, isTrue);
 
@@ -462,10 +469,68 @@ void main() {
         expect(tracker.recordedPositions.length, equals(1));
         expect(tracker.recordedPositions.first.accuracyMeters, equals(4.5));
         expect(tracker.recordedPositions.first.speedMps, equals(12.0));
-        expect(tracker.recordedPositions.first.coordinates.latitude, equals(5.0000));
+        expect(
+          tracker.recordedPositions.first.coordinates.latitude,
+          equals(5.0000),
+        );
 
         await tracker.stopTracking();
         expect(sessionRepo.savedSessions.length, equals(1));
+
+        tracker.dispose();
+      },
+    );
+
+    test(
+      'Telemetría de posición en tiempo real: conteo, intervalo y detección de señal obsoleta (>10s)',
+      () async {
+        final tracker = GpxRouteTracker(
+          route: testRoute,
+          locationService: fakeLocationService,
+          clock: () => simulatedTime,
+        );
+
+        await tracker.startTracking();
+        expect(tracker.totalPositionsReceived, equals(0));
+        expect(tracker.isPositionStale, isTrue);
+
+        // 1. Primera posición
+        final pos1 = GpsPosition(
+          coordinates: Coordinates(5.0000, -75.0000),
+          accuracyMeters: 5.0,
+          timestamp: simulatedTime,
+        );
+        fakeLocationService.emitPosition(pos1);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(tracker.totalPositionsReceived, equals(1));
+        expect(tracker.lastPositionAgeSeconds, equals(0));
+        expect(tracker.isPositionStale, isFalse);
+
+        // 2. Segunda posición 2 segundos después
+        simulatedTime = simulatedTime.add(const Duration(seconds: 2));
+        final pos2 = GpsPosition(
+          coordinates: Coordinates(5.0010, -75.0000),
+          accuracyMeters: 6.0,
+          timestamp: simulatedTime,
+        );
+        fakeLocationService.emitPosition(pos2);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(tracker.totalPositionsReceived, equals(2));
+        expect(tracker.lastPositionInterval?.inSeconds, equals(2));
+        expect(tracker.isPositionStale, isFalse);
+
+        // 3. Simular transcurso de 12 segundos sin nuevas posiciones (stale warning)
+        simulatedTime = simulatedTime.add(const Duration(seconds: 12));
+        expect(tracker.lastPositionAgeSeconds, equals(12));
+        expect(tracker.isPositionStale, isTrue);
+
+        // 4. Emisión de error en el proveedor GPS registra lastGpsError
+        fakeLocationService.emitError('GPS_PROVIDER_DISABLED');
+        await Future<void>.delayed(Duration.zero);
+        expect(tracker.lastGpsError, contains('GPS_PROVIDER_DISABLED'));
+        expect(tracker.status, equals(GpxTrackingStatus.gpsLost));
 
         tracker.dispose();
       },

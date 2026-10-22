@@ -62,4 +62,16 @@ abstract class TripperBleService {
 
   /// Limpia la lista de dispositivos descubiertos en memoria.
   void clearDiscoveredDevices() {}
+
+  /// Fase actual de la conexión BLE ('deteniendo_escaneo', 'solicitando_enlace', 'esperando_confirmacion', 'descubriendo_servicios', 'conectado', 'error', 'cancelado').
+  String? get currentConnectionPhase => null;
+
+  /// Indica si hay un proceso de conexión en curso actualmente.
+  bool get isConnecting => false;
+
+  /// Cancela la solicitud de conexión en curso de forma segura.
+  Future<void> cancelPendingConnection() async {}
+
+  /// Genera y exporta un informe técnico completo de diagnóstico BLE sin credenciales.
+  String exportFullDiagnosticReport() => '';
 }

@@ -151,7 +151,9 @@ class NavigationDiagnosticLogger {
     }
 
     if (finalResultPresented != null) {
-      buffer.writeln('  - Resultado final mostrado al usuario: $finalResultPresented');
+      buffer.writeln(
+        '  - Resultado final mostrado al usuario: $finalResultPresented',
+      );
     }
 
     debugPrint(buffer.toString());

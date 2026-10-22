@@ -48,5 +48,11 @@ abstract class LocationService {
     String? notificationTitle,
     String? notificationText,
   });
-}
 
+  /// Obtiene una lectura puntual de posición GPS del dispositivo con validación de precisión.
+  ///
+  /// Retorna `null` si el sensor está apagado, no hay permisos o no se obtiene lectura en [timeLimit].
+  Future<GpsPosition?> getCurrentPosition({
+    Duration timeLimit = const Duration(seconds: 8),
+  }) async => null;
+}

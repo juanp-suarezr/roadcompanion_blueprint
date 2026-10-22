@@ -42,6 +42,7 @@ import 'widgets/gpx_track_view.dart';
 import 'widgets/maneuver_display.dart';
 import 'widgets/navigation_permission_dialog.dart';
 import 'widgets/navigation_report_sheet.dart';
+import 'widgets/navigation_session_diagnostic_sheet.dart';
 import 'widgets/progress_stats_bar.dart';
 import 'widgets/real_map_widget.dart';
 import 'widgets/route_overview_card.dart';
@@ -146,7 +147,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _locationService =
         widget.locationService ?? const GeolocatorLocationService();
     _geocodingService = widget.geocodingService ?? NominatimGeocodingService();
-    _routingService = widget.routingService ??
+    _routingService =
+        widget.routingService ??
         OsrmRoutingService(memoryService: _memoryService);
     _tripperBleService =
         widget.tripperBleService ?? FlutterBluePlusTripperService();
@@ -315,7 +317,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
       final destination = Destination(
         id: 'fav_${fav.id}',
         title: fav.destinationTitle,
-        subtitle: fav.notes ??
+        subtitle:
+            fav.notes ??
             'Ruta guardada (${fav.distanceKm.toStringAsFixed(1)} km, ${fav.formattedDuration})',
         coordinates: fav.destination,
       );
@@ -364,7 +367,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
     CalculatedRoute? route,
     Coordinates? initialLocation,
   }) async {
-    final loc = initialLocation ??
+    final loc =
+        initialLocation ??
         _currentRiderCoordinates ??
         (route != null && route.geometry.isNotEmpty
             ? route.geometry.first
@@ -417,8 +421,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     final pos = _activeTracker!.currentPosition;
     if (pos != null) {
+      if (mounted) {
+        setState(() {
+          _currentRiderCoordinates = pos.coordinates;
+          _riderHeading = pos.headingDegrees;
+          _accuracyMeters = pos.accuracyMeters;
+        });
+      }
       final step = _maneuverEngine.resolveStep(
         currentCoordinates: pos.coordinates,
+        progress: _activeTracker!.currentProgress,
       );
       if (step != null) {
         _voiceService.processManeuverGuidance(
@@ -442,11 +454,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     final hasPermission =
         await NavigationPermissionDialog.ensureLocationPermission(
-      context,
-      locationService: _locationService,
-    );
+          context,
+          locationService: _locationService,
+        );
     if (!hasPermission || !mounted) return;
     await NavigationPermissionDialog.ensureNotificationPermission();
+
+    // Cancelar el listener pasivo de baja prioridad para no duplicar flujos de ubicación en segundo plano
+    _gpsLocationSubscription?.cancel();
+    _gpsLocationSubscription = null;
 
     final gpxCompatible = ImportedGpxRoute.fromCalculatedRoute(
       _calculatedRoute!,
@@ -476,6 +492,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         'Iniciando navegación hacia ${_selectedDestination?.title ?? "tu destino"}.',
       );
     } else if (_activeTracker!.permissionError != null) {
+      _startListeningGps();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_activeTracker!.permissionError!),
@@ -489,7 +506,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _activeTracker?.removeListener(_onActiveTrackerProgress);
     _voiceService.stop();
     _voiceService.resetGuidance();
+    _maneuverEngine.clear();
     _activeTracker?.stopTracking();
+    _startListeningGps();
     setState(() {
       _selectedDestination = null;
       _calculatedRoute = null;
@@ -550,6 +569,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await tracker.stopTracking();
     await _voiceService.stop();
     _voiceService.resetGuidance();
+    _maneuverEngine.clear();
+    _startListeningGps();
     if (!mounted) return;
 
     if (tracker.lastSavedSession != null) {
@@ -574,9 +595,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     final hasPermission =
         await NavigationPermissionDialog.ensureLocationPermission(
-      context,
-      locationService: _locationService,
-    );
+          context,
+          locationService: _locationService,
+        );
     if (!hasPermission || !mounted) return;
 
     _startListeningGps();
@@ -605,10 +626,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   NavigationManeuverStep? _resolveCurrentManeuverStep() {
     if (_calculatedRoute == null) return null;
-    final pos = _currentRiderCoordinates ??
+    final pos =
+        _currentRiderCoordinates ??
         _activeTracker?.currentPosition?.coordinates;
     if (pos == null) return null;
-    return _maneuverEngine.resolveStep(currentCoordinates: pos);
+    return _maneuverEngine.resolveStep(
+      currentCoordinates: pos,
+      progress: _activeTracker?.currentProgress,
+    );
   }
 
   Maneuver? _resolveActiveManeuver() {
@@ -656,6 +681,22 @@ class _NavigationScreenState extends State<NavigationScreen> {
                     ? null
                     : () => _handleImportGpx(routeState),
               ),
+              if (_activeTracker != null)
+                IconButton(
+                  tooltip: 'Panel de Diagnóstico GPS',
+                  icon: const Icon(
+                    Icons.troubleshoot_rounded,
+                    color: AppColors.cyanLuminous,
+                  ),
+                  onPressed: () {
+                    NavigationSessionDiagnosticSheet.show(
+                      context,
+                      tracker: _activeTracker!,
+                      maneuverEngine: _maneuverEngine,
+                      voiceService: _voiceService,
+                    );
+                  },
+                ),
               IconButton(
                 tooltip: 'Laboratorio Tripper Pod & GPS',
                 icon: const Icon(
@@ -685,7 +726,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
                     value: NavigationScreenMode.realMap,
                     child: Row(
                       children: [
-                        Icon(Icons.map_rounded, size: 18, color: AppColors.success),
+                        Icon(
+                          Icons.map_rounded,
+                          size: 18,
+                          color: AppColors.success,
+                        ),
                         SizedBox(width: 10),
                         Text('Mapa con GPS Real'),
                       ],
@@ -695,7 +740,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
                     value: NavigationScreenMode.demo,
                     child: Row(
                       children: [
-                        Icon(Icons.science_outlined, size: 18, color: AppColors.cyanLuminous),
+                        Icon(
+                          Icons.science_outlined,
+                          size: 18,
+                          color: AppColors.cyanLuminous,
+                        ),
                         SizedBox(width: 10),
                         Text('Simulación DEMO'),
                       ],
@@ -705,7 +754,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
                     value: NavigationScreenMode.gpx,
                     child: Row(
                       children: [
-                        Icon(Icons.route_outlined, size: 18, color: AppColors.electricBlue),
+                        Icon(
+                          Icons.route_outlined,
+                          size: 18,
+                          color: AppColors.electricBlue,
+                        ),
                         SizedBox(width: 10),
                         Text('Seguimiento GPX'),
                       ],
@@ -733,7 +786,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 3.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 7.0,
+                vertical: 3.0,
+              ),
               decoration: BoxDecoration(
                 color: hasFix
                     ? AppColors.success.withValues(alpha: 0.15)
@@ -749,7 +805,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    hasFix ? Icons.gps_fixed_rounded : Icons.gps_not_fixed_rounded,
+                    hasFix
+                        ? Icons.gps_fixed_rounded
+                        : Icons.gps_not_fixed_rounded,
                     size: 12.0,
                     color: hasFix ? AppColors.success : AppColors.warning,
                   ),
@@ -766,7 +824,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
               ),
             ),
             TextButton(
-              onPressed: () => setState(() => _currentMode = NavigationScreenMode.demo),
+              onPressed: () =>
+                  setState(() => _currentMode = NavigationScreenMode.demo),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -788,7 +847,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
               variant: StormBadgeVariant.success,
             ),
             TextButton(
-              onPressed: () => setState(() => _currentMode = NavigationScreenMode.demo),
+              onPressed: () =>
+                  setState(() => _currentMode = NavigationScreenMode.demo),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -810,7 +870,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
               variant: StormBadgeVariant.info,
             ),
             TextButton(
-              onPressed: () => setState(() => _currentMode = NavigationScreenMode.realMap),
+              onPressed: () =>
+                  setState(() => _currentMode = NavigationScreenMode.realMap),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -950,7 +1011,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
               final step = _resolveCurrentManeuverStep();
               final activeManeuver =
                   step?.activeManeuver ?? _resolveActiveManeuver();
-              final distanceMeters = step?.distanceToManeuverMeters ??
+              final distanceMeters =
+                  step?.distanceToManeuverMeters ??
                   (_activeTracker!.remainingDistanceMeters > 0
                       ? (_activeTracker!.remainingDistanceMeters / 10).clamp(
                           50.0,
@@ -971,6 +1033,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 onPause: _activeTracker!.pauseTracking,
                 onResume: _activeTracker!.resumeTracking,
                 onStop: () => _onStopSession(_activeTracker!),
+                onOpenDiagnostics: () {
+                  NavigationSessionDiagnosticSheet.show(
+                    context,
+                    tracker: _activeTracker!,
+                    maneuverEngine: _maneuverEngine,
+                    voiceService: _voiceService,
+                  );
+                },
               );
             },
           ),
@@ -982,7 +1052,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
             bottom: 230.0,
             child: FloatingActionButton.small(
               heroTag: 'report_issue_btn',
-              backgroundColor: isDark ? AppColors.cardNavy : AppColors.whiteSurface,
+              backgroundColor: isDark
+                  ? AppColors.cardNavy
+                  : AppColors.whiteSurface,
               foregroundColor: AppColors.warning,
               tooltip: 'Reportar incidencia vial o portón cerrado',
               onPressed: () => _handleReportRoadIssue(

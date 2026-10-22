@@ -85,7 +85,8 @@ class GeolocatorLocationService implements LocationService {
         distanceFilter: distanceFilterMeters,
         intervalDuration: Duration(milliseconds: intervalDurationMs),
         foregroundNotificationConfig: ForegroundNotificationConfig(
-          notificationTitle: notificationTitle ?? 'Navegación activa — REstelar',
+          notificationTitle:
+              notificationTitle ?? 'Navegación activa — REstelar',
           notificationText:
               notificationText ?? 'Siguiendo ruta en segundo plano',
           notificationIcon: const AndroidResource(
@@ -146,6 +147,52 @@ class GeolocatorLocationService implements LocationService {
         sink.addError(error, stackTrace);
       },
     );
+  }
+
+  @override
+  Future<GpsPosition?> getCurrentPosition({
+    Duration timeLimit = const Duration(seconds: 8),
+  }) async {
+    final enabled = await isLocationServiceEnabled();
+    if (!enabled) return null;
+
+    final permission = await checkPermission();
+    if (permission != LocationPermissionResult.granted) {
+      return null;
+    }
+
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: timeLimit,
+        ),
+      );
+
+      if (!pos.latitude.isFinite ||
+          !pos.longitude.isFinite ||
+          pos.latitude < -90.0 ||
+          pos.latitude > 90.0 ||
+          pos.longitude < -180.0 ||
+          pos.longitude > 180.0) {
+        return null;
+      }
+
+      return GpsPosition(
+        coordinates: Coordinates(pos.latitude, pos.longitude),
+        accuracyMeters: pos.accuracy.isFinite && pos.accuracy >= 0.0
+            ? pos.accuracy
+            : 999.0,
+        altitudeMeters: pos.altitude.isFinite ? pos.altitude : null,
+        speedMps: (pos.speed.isFinite && pos.speed >= 0.0) ? pos.speed : null,
+        headingDegrees: (pos.heading.isFinite && pos.heading >= 0.0)
+            ? pos.heading
+            : null,
+        timestamp: pos.timestamp,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   LocationPermissionResult _mapPermission(LocationPermission permission) {

@@ -38,18 +38,57 @@ void main() {
       expect(service.diagnosticLogs, isNotEmpty); // Inicialización genera log
       service.clearDiagnosticLogs();
       expect(service.diagnosticLogs.length, 1);
-      expect(service.diagnosticLogs.first, contains('Búfer de diagnóstico reiniciado.'));
+      expect(
+        service.diagnosticLogs.first,
+        contains('Búfer de diagnóstico reiniciado.'),
+      );
     });
 
-    test('clearDiscoveredDevices emite lista vacía en el stream reactivo', () async {
+    test(
+      'clearDiscoveredDevices emite lista vacía en el stream reactivo',
+      () async {
+        final service = FlutterBluePlusTripperService();
+        final expectation = expectLater(
+          service.discoveredDevicesStream,
+          emits(isEmpty),
+        );
+        service.clearDiscoveredDevices();
+        await expectation;
+        expect(service.discoveredDevices, isEmpty);
+      },
+    );
+
+    test('isConnecting inicial es false y currentConnectionPhase es null', () {
       final service = FlutterBluePlusTripperService();
-      final expectation = expectLater(
-        service.discoveredDevicesStream,
-        emits(isEmpty),
-      );
-      service.clearDiscoveredDevices();
-      await expectation;
-      expect(service.discoveredDevices, isEmpty);
+      expect(service.isConnecting, isFalse);
+      expect(service.currentConnectionPhase, isNull);
     });
+
+    test(
+      'cancelPendingConnection cuando no hay conexión no altera el estado',
+      () async {
+        final service = FlutterBluePlusTripperService();
+        await service.cancelPendingConnection();
+        expect(service.isConnecting, isFalse);
+        expect(service.currentState, TripperConnectionState.idle);
+      },
+    );
+
+    test(
+      'exportFullDiagnosticReport genera reporte estructurado sin credenciales',
+      () {
+        final service = FlutterBluePlusTripperService();
+        final report = service.exportFullDiagnosticReport();
+        expect(report, contains('INFORME DE DIAGNÓSTICO BLE — RESTELAR'));
+        expect(report, contains('Estado de conexión: idle'));
+        expect(report, contains('Dispositivos descubiertos (0)'));
+        expect(report, contains('REGISTRO COMPLETO DE EVENTOS'));
+        expect(report, contains('=== FIN DEL INFORME ==='));
+        // No contiene contraseñas ni tokens
+        expect(report.contains('password'), isFalse);
+        expect(report.contains('token'), isFalse);
+        expect(report.contains('secret'), isFalse);
+      },
+    );
   });
 }

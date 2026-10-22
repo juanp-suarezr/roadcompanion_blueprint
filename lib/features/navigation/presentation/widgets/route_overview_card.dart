@@ -30,11 +30,13 @@ class RouteOverviewCard extends StatelessWidget {
     this.onSaveFavorite,
     this.onReportIssue,
   }) : availableRoutes =
-            routes ?? (route != null ? [route] : const <CalculatedRoute>[]);
+           routes ?? (route != null ? [route] : const <CalculatedRoute>[]);
 
   CalculatedRoute get selectedRoute {
     if (availableRoutes.isEmpty) {
-      throw StateError('RouteOverviewCard requiere al menos una ruta calculada.');
+      throw StateError(
+        'RouteOverviewCard requiere al menos una ruta calculada.',
+      );
     }
     final index = selectedRouteIndex.clamp(0, availableRoutes.length - 1);
     return availableRoutes[index];
@@ -175,12 +177,13 @@ class RouteOverviewCard extends StatelessWidget {
                   _buildMetric(
                     label: 'TIEMPO ESTIMADO',
                     value: current.formattedDuration,
-                    diffText: current.durationDiff != null &&
+                    diffText:
+                        current.durationDiff != null &&
                             current.durationDiff!.inMinutes > 0
                         ? '+${current.durationDiff!.inMinutes} min'
                         : (current.isFastest && availableRoutes.length > 1
-                            ? 'Más rápida'
-                            : null),
+                              ? 'Más rápida'
+                              : null),
                     color: isDark
                         ? AppColors.cyanLuminous
                         : AppColors.surfaceNavy,
@@ -193,12 +196,13 @@ class RouteOverviewCard extends StatelessWidget {
                   _buildMetric(
                     label: 'DISTANCIA VIAL',
                     value: '${current.totalDistanceKm.toStringAsFixed(1)} km',
-                    diffText: current.distanceDiffKm != null &&
+                    diffText:
+                        current.distanceDiffKm != null &&
                             current.distanceDiffKm! > 0.05
                         ? '+${current.distanceDiffKm!.toStringAsFixed(1)} km'
                         : (current.isShortest && availableRoutes.length > 1
-                            ? 'Más corta'
-                            : null),
+                              ? 'Más corta'
+                              : null),
                     color: isDark
                         ? AppColors.coldWhite
                         : AppColors.primaryTextLight,
@@ -223,11 +227,7 @@ class RouteOverviewCard extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.block,
-                      color: AppColors.error,
-                      size: 18.0,
-                    ),
+                    const Icon(Icons.block, color: AppColors.error, size: 18.0),
                     const SizedBox(width: 8.0),
                     Expanded(
                       child: Column(
@@ -253,8 +253,9 @@ class RouteOverviewCard extends StatelessWidget {
                                     : AppColors.primaryTextLight,
                               ),
                             ),
-                          if (availableRoutes
-                              .any((r) => r.isPubliclyPassable)) ...[
+                          if (availableRoutes.any(
+                            (r) => r.isPubliclyPassable,
+                          )) ...[
                             const SizedBox(height: 4.0),
                             const Text(
                               'Sugerencia: Se recomienda seleccionar una alternativa pública disponible.',
@@ -404,7 +405,10 @@ class RouteOverviewCard extends StatelessWidget {
                         ),
                         label: const Text(
                           'Reportar',
-                          style: TextStyle(fontSize: 12.0, color: AppColors.warning),
+                          style: TextStyle(
+                            fontSize: 12.0,
+                            color: AppColors.warning,
+                          ),
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -432,8 +436,8 @@ class RouteOverviewCard extends StatelessWidget {
                 current.isConfirmedRestricted
                     ? 'INICIAR RUTA (ACCESO RESTRINGIDO)'
                     : (availableRoutes.length > 1
-                        ? 'INICIAR RUTA ${selectedRouteIndex + 1}'
-                        : 'INICIAR NAVEGACIÓN'),
+                          ? 'INICIAR RUTA ${selectedRouteIndex + 1}'
+                          : 'INICIAR NAVEGACIÓN'),
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
@@ -443,9 +447,7 @@ class RouteOverviewCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14.0),
                 backgroundColor: current.isConfirmedRestricted
                     ? AppColors.error
-                    : (isDark
-                        ? AppColors.cyanLuminous
-                        : AppColors.surfaceNavy),
+                    : (isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy),
                 foregroundColor: current.isConfirmedRestricted
                     ? Colors.white
                     : (isDark ? AppColors.nightBlue : Colors.white),
@@ -467,8 +469,8 @@ class RouteOverviewCard extends StatelessWidget {
   }) {
     final borderColor = isSelected
         ? (route.isConfirmedRestricted
-            ? AppColors.error
-            : (isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy))
+              ? AppColors.error
+              : (isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy))
         : (isDark ? const Color(0xFF264660) : AppColors.silver);
 
     return InkWell(
@@ -480,16 +482,13 @@ class RouteOverviewCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? (route.isConfirmedRestricted
-                  ? AppColors.error.withValues(alpha: 0.15)
-                  : (isDark
-                      ? AppColors.cyanLuminous.withValues(alpha: 0.12)
-                      : AppColors.surfaceNavy.withValues(alpha: 0.08)))
+                    ? AppColors.error.withValues(alpha: 0.15)
+                    : (isDark
+                          ? AppColors.cyanLuminous.withValues(alpha: 0.12)
+                          : AppColors.surfaceNavy.withValues(alpha: 0.08)))
               : (isDark ? AppColors.cardNavy : AppColors.lightBackground),
           borderRadius: BorderRadius.circular(10.0),
-          border: Border.all(
-            color: borderColor,
-            width: isSelected ? 2.0 : 1.0,
-          ),
+          border: Border.all(color: borderColor, width: isSelected ? 2.0 : 1.0),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -502,8 +501,9 @@ class RouteOverviewCard extends StatelessWidget {
                     'Ruta ${index + 1}',
                     style: TextStyle(
                       fontSize: 12.0,
-                      fontWeight:
-                          isSelected ? FontWeight.w800 : FontWeight.w600,
+                      fontWeight: isSelected
+                          ? FontWeight.w800
+                          : FontWeight.w600,
                       color: isDark
                           ? AppColors.coldWhite
                           : AppColors.primaryTextLight,

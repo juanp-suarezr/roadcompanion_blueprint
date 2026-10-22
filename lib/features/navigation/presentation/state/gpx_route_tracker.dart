@@ -28,6 +28,7 @@ class GpxRouteTracker extends ChangeNotifier {
   final double destinationProximityMeters;
   final int lookaheadSegments;
   final Duration gpsTimeoutDuration;
+  final bool isDemoMode;
 
   // Estado del seguimiento
   GpxTrackingStatus _status = GpxTrackingStatus.idle;
@@ -35,6 +36,7 @@ class GpxRouteTracker extends ChangeNotifier {
   RouteProgress? _currentProgress;
   String? _statusMessage;
   String? _permissionError;
+  String? _lastGpsError;
 
   // Telemetría acumulada
   int _lastKnownSegmentIndex = 0;
@@ -43,6 +45,9 @@ class GpxRouteTracker extends ChangeNotifier {
   int _consecutiveOffRouteSamples = 0;
 
   DateTime? _sessionStartTime;
+  DateTime? _lastPositionTime;
+  Duration? _lastPositionInterval;
+  int _totalPositionsReceived = 0;
   Duration _sessionDuration = Duration.zero;
   int _validSamplesCount = 0;
   double _sumAccuracy = 0.0;
@@ -70,10 +75,11 @@ class GpxRouteTracker extends ChangeNotifier {
     DateTime Function()? clock,
     this.offRouteThresholdMeters = 45.0,
     this.offRouteFilterSamples = 3,
-    this.maxAccuracyThresholdMeters = 35.0,
+    this.maxAccuracyThresholdMeters = 65.0,
     this.destinationProximityMeters = 50.0,
     this.lookaheadSegments = 8,
     this.gpsTimeoutDuration = const Duration(seconds: 12),
+    this.isDemoMode = false,
   }) : _locationService = locationService ?? const GeolocatorLocationService(),
        _calculator = calculator,
        _sessionRepository = sessionRepository,
@@ -93,6 +99,16 @@ class GpxRouteTracker extends ChangeNotifier {
   RouteProgress? get currentProgress => _currentProgress;
   String? get statusMessage => _statusMessage;
   String? get permissionError => _permissionError;
+  String? get lastGpsError => _lastGpsError;
+
+  DateTime? get lastPositionTime => _lastPositionTime;
+  int get lastPositionAgeSeconds => _lastPositionTime != null
+      ? _clock().difference(_lastPositionTime!).inSeconds
+      : -1;
+  bool get isPositionStale =>
+      _lastPositionTime == null || lastPositionAgeSeconds > 10;
+  Duration? get lastPositionInterval => _lastPositionInterval;
+  int get totalPositionsReceived => _totalPositionsReceived;
 
   double get offRouteDistanceMeters => _offRouteDistanceMeters;
   double get distanceTraveledMeters => _monotonicDistanceTraveled;
@@ -115,7 +131,8 @@ class GpxRouteTracker extends ChangeNotifier {
   double get averageAccuracyMeters =>
       _validSamplesCount > 0 ? (_sumAccuracy / _validSamplesCount) : 0.0;
   List<Coordinates> get recentTrail => List.unmodifiable(_recentTrail);
-  List<GpsPosition> get recordedPositions => List.unmodifiable(_recordedPositions);
+  List<GpsPosition> get recordedPositions =>
+      List.unmodifiable(_recordedPositions);
   bool get isBackgroundEnabled => _enableBackgroundTracking;
   NavigationSession? get lastSavedSession => _lastSavedSession;
 
@@ -181,6 +198,7 @@ class GpxRouteTracker extends ChangeNotifier {
           _handleNewPosition,
           onError: (error) {
             _status = GpxTrackingStatus.gpsLost;
+            _lastGpsError = error.toString();
             _statusMessage = 'Error en el proveedor de GPS: $error';
             notifyListeners();
           },
@@ -254,6 +272,13 @@ class GpxRouteTracker extends ChangeNotifier {
   void _handleNewPosition(GpsPosition pos) {
     _resetGpsTimeout();
     _lastPosition = pos;
+    _totalPositionsReceived++;
+    final now = _clock();
+    if (_lastPositionTime != null) {
+      _lastPositionInterval = now.difference(_lastPositionTime!);
+    }
+    _lastPositionTime = now;
+    _lastGpsError = null;
 
     // 1. Filtrar lecturas con precisión deficiente
     if (pos.accuracyMeters > maxAccuracyThresholdMeters) {

@@ -41,24 +41,21 @@ class SavedFavoriteRoute {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'origin': {
-          'latitude': origin.latitude,
-          'longitude': origin.longitude,
-        },
-        'originTitle': originTitle,
-        'destination': {
-          'latitude': destination.latitude,
-          'longitude': destination.longitude,
-        },
-        'destinationTitle': destinationTitle,
-        'savedAt': savedAt.toIso8601String(),
-        'distanceKm': distanceKm,
-        'estimatedDurationSeconds': estimatedDuration.inSeconds,
-        'notes': notes,
-        'preferences': preferences,
-      };
+    'id': id,
+    'title': title,
+    'origin': {'latitude': origin.latitude, 'longitude': origin.longitude},
+    'originTitle': originTitle,
+    'destination': {
+      'latitude': destination.latitude,
+      'longitude': destination.longitude,
+    },
+    'destinationTitle': destinationTitle,
+    'savedAt': savedAt.toIso8601String(),
+    'distanceKm': distanceKm,
+    'estimatedDurationSeconds': estimatedDuration.inSeconds,
+    'notes': notes,
+    'preferences': preferences,
+  };
 
   factory SavedFavoriteRoute.fromJson(Map<String, dynamic> json) {
     final originMap = json['origin'] as Map<String, dynamic>;
@@ -77,8 +74,8 @@ class SavedFavoriteRoute {
         (destMap['longitude'] as num).toDouble(),
       ),
       destinationTitle: json['destinationTitle'] as String? ?? 'Destino',
-      savedAt: DateTime.tryParse(json['savedAt'] as String? ?? '') ??
-          DateTime.now(),
+      savedAt:
+          DateTime.tryParse(json['savedAt'] as String? ?? '') ?? DateTime.now(),
       distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0.0,
       estimatedDuration: Duration(
         seconds: (json['estimatedDurationSeconds'] as num?)?.toInt() ?? 0,

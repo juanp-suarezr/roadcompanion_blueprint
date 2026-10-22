@@ -6,6 +6,7 @@ import 'package:road_companion/features/navigation/infrastructure/services/flutt
 
 class MockTtsService extends FlutterTtsVoiceNavigationService {
   final List<String> spokenPrompts = [];
+  String? _mockLastSpoken;
 
   MockTtsService() : super();
 
@@ -13,8 +14,12 @@ class MockTtsService extends FlutterTtsVoiceNavigationService {
   bool get isAvailable => true;
 
   @override
+  String? get lastSpokenText => _mockLastSpoken;
+
+  @override
   Future<void> speak(String text, {bool interrupt = false}) async {
     if (isMuted) return;
+    _mockLastSpoken = text;
     spokenPrompts.add(text);
   }
 }
@@ -36,59 +41,71 @@ void main() {
       );
     });
 
-    test('Emite aviso de anticipación a ~450m y no lo duplica si se mantiene en el rango', () async {
-      await voiceService.processManeuverGuidance(
-        maneuverIndex: 1,
-        maneuver: testManeuver,
-        distanceToManeuverMeters: 450.0,
-        currentSpeedKmh: 40.0,
-      );
+    test(
+      'Emite aviso de anticipación a ~450m y no lo duplica si se mantiene en el rango',
+      () async {
+        await voiceService.processManeuverGuidance(
+          maneuverIndex: 1,
+          maneuver: testManeuver,
+          distanceToManeuverMeters: 450.0,
+          currentSpeedKmh: 40.0,
+        );
 
-      expect(voiceService.spokenPrompts.length, equals(1));
-      expect(voiceService.spokenPrompts.first, contains('En 450 metros, gira a la derecha en Avenida 30 de Agosto'));
+        expect(voiceService.spokenPrompts.length, equals(1));
+        expect(
+          voiceService.spokenPrompts.first,
+          contains('En 450 metros, gira a la derecha en Avenida 30 de Agosto'),
+        );
 
-      // Repetir llamada a 440m (mismo rango de anticipación)
-      await voiceService.processManeuverGuidance(
-        maneuverIndex: 1,
-        maneuver: testManeuver,
-        distanceToManeuverMeters: 440.0,
-        currentSpeedKmh: 40.0,
-      );
+        // Repetir llamada a 440m (mismo rango de anticipación)
+        await voiceService.processManeuverGuidance(
+          maneuverIndex: 1,
+          maneuver: testManeuver,
+          distanceToManeuverMeters: 440.0,
+          currentSpeedKmh: 40.0,
+        );
 
-      // No debe repetirse
-      expect(voiceService.spokenPrompts.length, equals(1));
-    });
+        // No debe repetirse
+        expect(voiceService.spokenPrompts.length, equals(1));
+      },
+    );
 
-    test('Secuencia progresiva: Anticipación -> Preparación -> Inminente', () async {
-      // 1. Anticipación
-      await voiceService.processManeuverGuidance(
-        maneuverIndex: 2,
-        maneuver: testManeuver,
-        distanceToManeuverMeters: 450.0,
-        currentSpeedKmh: 40.0,
-      );
-      expect(voiceService.spokenPrompts.length, equals(1));
+    test(
+      'Secuencia progresiva: Anticipación -> Preparación -> Inminente',
+      () async {
+        // 1. Anticipación
+        await voiceService.processManeuverGuidance(
+          maneuverIndex: 2,
+          maneuver: testManeuver,
+          distanceToManeuverMeters: 450.0,
+          currentSpeedKmh: 40.0,
+        );
+        expect(voiceService.spokenPrompts.length, equals(1));
 
-      // 2. Preparación a 180m
-      await voiceService.processManeuverGuidance(
-        maneuverIndex: 2,
-        maneuver: testManeuver,
-        distanceToManeuverMeters: 180.0,
-        currentSpeedKmh: 40.0,
-      );
-      expect(voiceService.spokenPrompts.length, equals(2));
-      expect(voiceService.spokenPrompts.last, contains('En 180 metros'));
+        // 2. Preparación a 180m
+        await voiceService.processManeuverGuidance(
+          maneuverIndex: 2,
+          maneuver: testManeuver,
+          distanceToManeuverMeters: 180.0,
+          currentSpeedKmh: 40.0,
+        );
+        expect(voiceService.spokenPrompts.length, equals(2));
+        expect(voiceService.spokenPrompts.last, contains('En 180 metros'));
 
-      // 3. Inminente a 25m
-      await voiceService.processManeuverGuidance(
-        maneuverIndex: 2,
-        maneuver: testManeuver,
-        distanceToManeuverMeters: 25.0,
-        currentSpeedKmh: 40.0,
-      );
-      expect(voiceService.spokenPrompts.length, equals(3));
-      expect(voiceService.spokenPrompts.last, equals('Gira a la derecha en Avenida 30 de Agosto.'));
-    });
+        // 3. Inminente a 25m
+        await voiceService.processManeuverGuidance(
+          maneuverIndex: 2,
+          maneuver: testManeuver,
+          distanceToManeuverMeters: 25.0,
+          currentSpeedKmh: 40.0,
+        );
+        expect(voiceService.spokenPrompts.length, equals(3));
+        expect(
+          voiceService.spokenPrompts.last,
+          equals('Gira a la derecha en Avenida 30 de Agosto.'),
+        );
+      },
+    );
 
     test('Modo silenciado (isMuted) bloquea todo anuncio de voz', () async {
       voiceService.isMuted = true;
@@ -106,11 +123,22 @@ void main() {
     test('Anuncio de salida de ruta y llegada a destino', () async {
       await voiceService.announceOffRoute();
       expect(voiceService.spokenPrompts.length, equals(1));
-      expect(voiceService.spokenPrompts.first, contains('Has salido de la ruta'));
+      expect(
+        voiceService.spokenPrompts.first,
+        contains('Has salido de la ruta'),
+      );
 
       await voiceService.announceDestinationReached();
       expect(voiceService.spokenPrompts.length, equals(2));
-      expect(voiceService.spokenPrompts.last, contains('Has llegado a tu destino'));
+      expect(
+        voiceService.spokenPrompts.last,
+        contains('Has llegado a tu destino'),
+      );
+    });
+
+    test('lastSpokenText refleja la última locución emitida', () async {
+      await voiceService.speak('Atención, curva peligrosa.');
+      expect(voiceService.lastSpokenText, equals('Atención, curva peligrosa.'));
     });
   });
 }

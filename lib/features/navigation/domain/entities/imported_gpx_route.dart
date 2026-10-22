@@ -93,9 +93,7 @@ class ImportedGpxRoute {
 
   /// Crea una ruta compatible a partir de una [CalculatedRoute] calculada por un motor de rutas.
   factory ImportedGpxRoute.fromCalculatedRoute(CalculatedRoute route) {
-    final points = route.geometry
-        .map((c) => GpxPoint(coordinates: c))
-        .toList();
+    final points = route.geometry.map((c) => GpxPoint(coordinates: c)).toList();
     return ImportedGpxRoute(
       name: route.summary.isNotEmpty ? route.summary : 'Ruta Calculada',
       segments: [GpxSegment(points)],

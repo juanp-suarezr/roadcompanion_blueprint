@@ -160,12 +160,11 @@ class RouteIntegrityValidator {
     if (rawSteps != null) {
       for (final step in rawSteps) {
         final access = (step['access'] as String? ?? '').toLowerCase().trim();
-        final motorVehicle =
-            (step['motor_vehicle'] as String? ?? '').toLowerCase().trim();
-        final vehicle =
-            (step['vehicle'] as String? ?? '').toLowerCase().trim();
-        final barrier =
-            (step['barrier'] as String? ?? '').toLowerCase().trim();
+        final motorVehicle = (step['motor_vehicle'] as String? ?? '')
+            .toLowerCase()
+            .trim();
+        final vehicle = (step['vehicle'] as String? ?? '').toLowerCase().trim();
+        final barrier = (step['barrier'] as String? ?? '').toLowerCase().trim();
         final intersections = step['intersections'] as List<dynamic>?;
 
         // Comprobación de restricciones confirmadas para vehículos
@@ -193,10 +192,10 @@ class RouteIntegrityValidator {
           final tagDesc = isAccessPrivate
               ? 'access=$access'
               : (isMotorVehicleRestricted
-                  ? 'motor_vehicle=$motorVehicle'
-                  : (isVehicleRestricted
-                      ? 'vehicle=$vehicle'
-                      : 'barrier=$barrier (portón/cerrojo)'));
+                    ? 'motor_vehicle=$motorVehicle'
+                    : (isVehicleRestricted
+                          ? 'vehicle=$vehicle'
+                          : 'barrier=$barrier (portón/cerrojo)'));
           confirmedReasons.add(tagDesc);
         } else if (access == 'unconfirmed' ||
             access == 'unknown' ||
@@ -213,10 +212,14 @@ class RouteIntegrityValidator {
                 if (classes.contains('restricted') ||
                     classes.contains('private')) {
                   hasRestrictedAccess = true;
-                  confirmedReasons.add('intersección clasificada como privada/restringida');
+                  confirmedReasons.add(
+                    'intersección clasificada como privada/restringida',
+                  );
                 }
                 if (classes.contains('ferry')) {
-                  warnings.add('La ruta incluye cruce en ferry o transbordador fluvial.');
+                  warnings.add(
+                    'La ruta incluye cruce en ferry o transbordador fluvial.',
+                  );
                 }
               }
             }

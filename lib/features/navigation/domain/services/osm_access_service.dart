@@ -43,7 +43,9 @@ class OsmAccessService {
 
   /// Verifica si una coordenada o segmento sospechoso (ej. giro sin nombre hacia service)
   /// contiene una barrera física (portón/cerrojo) o restricción de acceso en OSM.
-  Future<RoadSegmentAccessResult> verifySegmentAccess(Coordinates location) async {
+  Future<RoadSegmentAccessResult> verifySegmentAccess(
+    Coordinates location,
+  ) async {
     // Clave de caché redondeada a ~50 metros
     final cacheKey =
         '${location.latitude.toStringAsFixed(3)}_${location.longitude.toStringAsFixed(3)}';
@@ -55,7 +57,9 @@ class OsmAccessService {
     final delta = 0.001; // ~110 metros
     final bbox =
         '${location.longitude - delta},${location.latitude - delta},${location.longitude + delta},${location.latitude + delta}';
-    final uri = Uri.parse('https://api.openstreetmap.org/api/0.6/map.json?bbox=$bbox');
+    final uri = Uri.parse(
+      'https://api.openstreetmap.org/api/0.6/map.json?bbox=$bbox',
+    );
 
     try {
       final response = await _client
@@ -76,7 +80,8 @@ class OsmAccessService {
           isUnconfirmed: true,
           isConfirmedPublic: false,
           description: 'Información de acceso no verificable en este momento',
-          evidence: 'Servidor cartográfico no disponible (HTTP ${response.statusCode})',
+          evidence:
+              'Servidor cartográfico no disponible (HTTP ${response.statusCode})',
         );
         _cache[cacheKey] = unconfirmed;
         return unconfirmed;
@@ -112,7 +117,8 @@ class OsmAccessService {
               if (dist <= 60.0) {
                 hasGate = true;
                 gateCoord = Coordinates(lat, lon);
-                gateDesc = 'barrier=$barrier (portón o barrera física detectada en nodo ${el['id']})';
+                gateDesc =
+                    'barrier=$barrier (portón o barrera física detectada en nodo ${el['id']})';
                 break;
               }
             }
@@ -132,7 +138,8 @@ class OsmAccessService {
 
             if (access == 'private' || access == 'no') {
               hasGate = true;
-              gateDesc = 'Vía clasificada como privada (access=$access en vía ${el['id']})';
+              gateDesc =
+                  'Vía clasificada como privada (access=$access en vía ${el['id']})';
               break;
             } else if (highway == 'service' && access == null) {
               // Vía de servicio sin etiqueta de acceso explícita: no es confirmada privada, es incierta
@@ -140,8 +147,10 @@ class OsmAccessService {
                 isConfirmedPrivate: false,
                 isUnconfirmed: true,
                 isConfirmedPublic: false,
-                description: 'Vía de servicio con acceso no confirmado en la cartografía',
-                evidence: 'OSM way ${el['id']} (highway=service sin tag access)',
+                description:
+                    'Vía de servicio con acceso no confirmado en la cartografía',
+                evidence:
+                    'OSM way ${el['id']} (highway=service sin tag access)',
               );
               _cache[cacheKey] = result;
               return result;

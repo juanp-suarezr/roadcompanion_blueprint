@@ -9,6 +9,8 @@ import '../../navigation/presentation/navigation_screen.dart';
 import '../../navigation/presentation/screens/tripper_diagnostic_screen.dart';
 import '../../placeholder/presentation/coming_soon_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../itinerary/presentation/screens/quick_navigation_screen.dart';
+import '../../itinerary/presentation/screens/trip_planner_screen.dart';
 import 'widgets/external_display_banner.dart';
 import 'widgets/ready_to_ride_card.dart';
 
@@ -90,6 +92,24 @@ class HomeScreen extends StatelessWidget {
                     title: 'Navegación',
                     subtitle: 'Demostración de ruta asistida y odometría',
                     onTap: () => _navigateTo(context, const NavigationScreen()),
+                  ),
+                  const SizedBox(height: 10.0),
+
+                  QuickActionCard(
+                    icon: Icons.near_me_rounded,
+                    title: 'Ir ahora',
+                    subtitle: 'Navegación rápida con Google Maps o Waze',
+                    onTap: () =>
+                        _navigateTo(context, const QuickNavigationScreen()),
+                  ),
+                  const SizedBox(height: 10.0),
+
+                  QuickActionCard(
+                    icon: Icons.alt_route_rounded,
+                    title: 'Planificador de Viaje',
+                    subtitle: 'Ruta multiparada y exportación a Maps / Waze',
+                    onTap: () =>
+                        _navigateTo(context, const TripPlannerScreen()),
                   ),
                   const SizedBox(height: 10.0),
 

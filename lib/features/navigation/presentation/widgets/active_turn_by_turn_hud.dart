@@ -16,6 +16,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onStop;
+  final VoidCallback? onOpenDiagnostics;
 
   const ActiveTurnByTurnHud({
     super.key,
@@ -27,6 +28,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
     required this.onPause,
     required this.onResume,
     required this.onStop,
+    this.onOpenDiagnostics,
   });
 
   @override
@@ -41,10 +43,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
             top: 10.0,
             left: 12.0,
             right: 12.0,
-            child: SafeArea(
-              bottom: false,
-              child: _buildManeuverCard(isDark),
-            ),
+            child: SafeArea(bottom: false, child: _buildManeuverCard(isDark)),
           ),
 
         // 2. Panel Inferior de Telemetría y Controles Flotantes
@@ -142,9 +141,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                     : Icons.volume_up_rounded,
                 color: isVoiceMuted
                     ? AppColors.silver
-                    : (isDark
-                        ? AppColors.cyanLuminous
-                        : AppColors.surfaceNavy),
+                    : (isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy),
                 size: 24.0,
               ),
               onPressed: onToggleVoiceMute,
@@ -159,8 +156,9 @@ class ActiveTurnByTurnHud extends StatelessWidget {
     final pos = tracker.currentPosition;
     final hasFix = pos != null;
     final accuracy = pos?.accuracyMeters;
-    final accuracyStr =
-        accuracy != null ? '±${accuracy.toStringAsFixed(0)}m' : null;
+    final accuracyStr = accuracy != null
+        ? '±${accuracy.toStringAsFixed(0)}m'
+        : null;
     final timeStr = pos != null
         ? '${pos.timestamp.hour.toString().padLeft(2, '0')}:${pos.timestamp.minute.toString().padLeft(2, '0')}:${pos.timestamp.second.toString().padLeft(2, '0')}'
         : null;
@@ -191,7 +189,10 @@ class ActiveTurnByTurnHud extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7.0,
+                  vertical: 2.0,
+                ),
                 decoration: BoxDecoration(
                   color: hasFix
                       ? AppColors.success.withValues(alpha: 0.15)
@@ -207,7 +208,9 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      hasFix ? Icons.gps_fixed_rounded : Icons.gps_not_fixed_rounded,
+                      hasFix
+                          ? Icons.gps_fixed_rounded
+                          : Icons.gps_not_fixed_rounded,
                       size: 11.0,
                       color: hasFix ? AppColors.success : AppColors.warning,
                     ),
@@ -231,7 +234,9 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 10.0,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? AppColors.secondaryTextDark : AppColors.secondaryTextLight,
+                    color: isDark
+                        ? AppColors.secondaryTextDark
+                        : AppColors.secondaryTextLight,
                   ),
                 ),
               ],
@@ -241,14 +246,33 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                   '• $timeStr',
                   style: TextStyle(
                     fontSize: 10.0,
-                    color: isDark ? AppColors.secondaryTextDark : AppColors.secondaryTextLight,
+                    color: isDark
+                        ? AppColors.secondaryTextDark
+                        : AppColors.secondaryTextLight,
                   ),
                 ),
               ],
               const Spacer(),
-              if (tracker.isPaused)
+              if (onOpenDiagnostics != null)
+                IconButton(
+                  tooltip: 'Diagnóstico de sesión GPS',
+                  icon: const Icon(
+                    Icons.troubleshoot_rounded,
+                    size: 18.0,
+                    color: AppColors.secondaryCyan,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: onOpenDiagnostics,
+                ),
+              if (tracker.isPaused) ...[
+                const SizedBox(width: 6.0),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6.0,
+                    vertical: 2.0,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.warning.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4.0),
@@ -262,6 +286,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                     ),
                   ),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 8.0),

@@ -77,8 +77,8 @@ class _NavigationReportSheetState extends State<NavigationReportSheet> {
       description: description.isNotEmpty
           ? description
           : _selectedType == NavigationIssueType.lockedGate
-              ? 'Portón cerrado con candado / acceso privado'
-              : 'Incidencia vial reportada',
+          ? 'Portón cerrado con candado / acceso privado'
+          : 'Incidencia vial reportada',
       reportedAt: DateTime.now(),
       status: _isConfirmed
           ? ReportVerificationStatus.confirmed
@@ -185,7 +185,9 @@ class _NavigationReportSheetState extends State<NavigationReportSheet> {
               controller: _roadController,
               style: TextStyle(
                 fontSize: 13.5,
-                color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+                color: isDark
+                    ? AppColors.coldWhite
+                    : AppColors.primaryTextLight,
               ),
               decoration: const InputDecoration(
                 labelText: 'Vía o sector (opcional)',
@@ -201,7 +203,9 @@ class _NavigationReportSheetState extends State<NavigationReportSheet> {
               maxLines: 2,
               style: TextStyle(
                 fontSize: 13.5,
-                color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+                color: isDark
+                    ? AppColors.coldWhite
+                    : AppColors.primaryTextLight,
               ),
               decoration: const InputDecoration(
                 labelText: 'Detalle o comentario (opcional)',
@@ -238,7 +242,9 @@ class _NavigationReportSheetState extends State<NavigationReportSheet> {
                       child: CircularProgressIndicator(strokeWidth: 2.0),
                     )
                   : const Icon(Icons.check, size: 18.0),
-              label: Text(_isSaving ? 'GUARDANDO...' : 'REGISTRAR REPORTE EN MEMORIA'),
+              label: Text(
+                _isSaving ? 'GUARDANDO...' : 'REGISTRAR REPORTE EN MEMORIA',
+              ),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14.0),
                 backgroundColor: AppColors.error,
@@ -253,11 +259,27 @@ class _NavigationReportSheetState extends State<NavigationReportSheet> {
 
   Widget _buildTypeSelector(bool isDark) {
     final options = [
-      (NavigationIssueType.lockedGate, 'Portón cerrado / Privada', Icons.lock_outline),
+      (
+        NavigationIssueType.lockedGate,
+        'Portón cerrado / Privada',
+        Icons.lock_outline,
+      ),
       (NavigationIssueType.wrongTurn, 'Giro incorrecto', Icons.turn_sharp_left),
-      (NavigationIssueType.inaccessibleDestination, 'Destino inaccesible', Icons.block),
-      (NavigationIssueType.unexpectedUnpaved, 'Vía destapada / Trocha', Icons.terrain),
-      (NavigationIssueType.badRoadCondition, 'Vía en mal estado / Baches', Icons.warning_amber),
+      (
+        NavigationIssueType.inaccessibleDestination,
+        'Destino inaccesible',
+        Icons.block,
+      ),
+      (
+        NavigationIssueType.unexpectedUnpaved,
+        'Vía destapada / Trocha',
+        Icons.terrain,
+      ),
+      (
+        NavigationIssueType.badRoadCondition,
+        'Vía en mal estado / Baches',
+        Icons.warning_amber,
+      ),
       (NavigationIssueType.other, 'Otro problema', Icons.more_horiz),
     ];
 
@@ -271,15 +293,21 @@ class _NavigationReportSheetState extends State<NavigationReportSheet> {
           avatar: Icon(
             opt.$3,
             size: 16.0,
-            color: isSelected ? Colors.white : (isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy),
+            color: isSelected
+                ? Colors.white
+                : (isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy),
           ),
           label: Text(opt.$2),
           labelStyle: TextStyle(
             fontSize: 11.5,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? Colors.white : (isDark ? AppColors.coldWhite : AppColors.primaryTextLight),
+            color: isSelected
+                ? Colors.white
+                : (isDark ? AppColors.coldWhite : AppColors.primaryTextLight),
           ),
-          backgroundColor: isDark ? AppColors.cardNavy : const Color(0xFFF1F6FA),
+          backgroundColor: isDark
+              ? AppColors.cardNavy
+              : const Color(0xFFF1F6FA),
           selectedColor: AppColors.error,
           onSelected: (selected) {
             if (selected) {

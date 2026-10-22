@@ -95,11 +95,9 @@ class Coordinates {
     final double phi2 = asin(
       sin(phi1) * cos(d) + cos(phi1) * sin(d) * cos(brng),
     );
-    final double lambda2 = lambda1 +
-        atan2(
-          sin(brng) * sin(d) * cos(phi1),
-          cos(d) - sin(phi1) * sin(phi2),
-        );
+    final double lambda2 =
+        lambda1 +
+        atan2(sin(brng) * sin(d) * cos(phi1), cos(d) - sin(phi1) * sin(phi2));
 
     final double latDeg = phi2 * (180.0 / pi);
     final double lonDeg = ((lambda2 * (180.0 / pi) + 540.0) % 360.0) - 180.0;

@@ -67,6 +67,15 @@ class MockRoutingService implements RoutingService {
   }) async {
     return routesToReturn ?? [routeToReturn];
   }
+
+  @override
+  Future<CalculatedRoute> calculateMultistopRoute({
+    required Coordinates origin,
+    required List<Coordinates> waypoints,
+    required Coordinates destination,
+  }) async {
+    return routeToReturn;
+  }
 }
 
 class MockMapLocationService implements LocationService {
@@ -100,6 +109,11 @@ class MockMapLocationService implements LocationService {
     String? notificationTitle,
     String? notificationText,
   }) => _controller.stream;
+
+  @override
+  Future<GpsPosition?> getCurrentPosition({
+    Duration timeLimit = const Duration(seconds: 8),
+  }) async => null;
 
   void dispose() => _controller.close();
 }
@@ -442,7 +456,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verificar que aparece el mensaje de advertencia de acceso restringido
-      expect(find.text('Acceso restringido / Vía privada con cerrojo'), findsOneWidget);
+      expect(
+        find.text('Acceso restringido / Vía privada con cerrojo'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining('Acceso restringido o vía privada confirmada'),
         findsOneWidget,

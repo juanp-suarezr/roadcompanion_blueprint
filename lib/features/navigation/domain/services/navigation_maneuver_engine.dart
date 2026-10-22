@@ -37,12 +37,14 @@ class NavigationManeuverEngine {
   CalculatedRoute? _route;
   final List<double> _cumulativeDistances = [];
   final List<double> _maneuverDistancesAlongRoute = [];
+  NavigationManeuverStep? _lastResolvedStep;
 
   NavigationManeuverEngine({
     RouteProgressCalculator calculator = const RouteProgressCalculator(),
   }) : _calculator = calculator;
 
   CalculatedRoute? get currentRoute => _route;
+  NavigationManeuverStep? get lastResolvedStep => _lastResolvedStep;
 
   /// Configura la ruta y precalcula las distancias acumuladas a lo largo de la calzada.
   void setRoute(CalculatedRoute route) {
@@ -79,8 +81,9 @@ class NavigationManeuverEngine {
     if (geometry.length == 1) return 0.0;
 
     try {
-      final totalDist =
-          _cumulativeDistances.isNotEmpty ? _cumulativeDistances.last : null;
+      final totalDist = _cumulativeDistances.isNotEmpty
+          ? _cumulativeDistances.last
+          : null;
       final progress = _calculator.calculate(
         geometry: geometry,
         currentPosition: point,
@@ -100,7 +103,9 @@ class NavigationManeuverEngine {
         }
       }
 
-      final baseDist = _cumulativeDistances.isNotEmpty && bestSegment < _cumulativeDistances.length
+      final baseDist =
+          _cumulativeDistances.isNotEmpty &&
+              bestSegment < _cumulativeDistances.length
           ? _cumulativeDistances[bestSegment]
           : 0.0;
       final offset = geometry[bestSegment].distanceTo(point);
@@ -128,8 +133,10 @@ class NavigationManeuverEngine {
     if (progress != null) {
       riderDistAlongRoute = progress.distanceTraveledMeters;
     } else {
-      riderDistAlongRoute =
-          _findDistanceAlongRoute(currentCoordinates, _route!.geometry);
+      riderDistAlongRoute = _findDistanceAlongRoute(
+        currentCoordinates,
+        _route!.geometry,
+      );
     }
 
     // Buscar la primera maniobra que esté por delante del motociclista
@@ -152,24 +159,29 @@ class NavigationManeuverEngine {
     final activeManeuver = maneuvers[activeIdx];
     final double rawDistance =
         _maneuverDistancesAlongRoute[activeIdx] - riderDistAlongRoute;
-    final double distanceToManeuver =
-        rawDistance > 0.0 ? rawDistance : currentCoordinates.distanceTo(activeManeuver.location);
+    final double distanceToManeuver = rawDistance > 0.0
+        ? rawDistance
+        : currentCoordinates.distanceTo(activeManeuver.location);
 
-    final nextManeuver =
-        (activeIdx + 1 < maneuvers.length) ? maneuvers[activeIdx + 1] : null;
+    final nextManeuver = (activeIdx + 1 < maneuvers.length)
+        ? maneuvers[activeIdx + 1]
+        : null;
 
-    return NavigationManeuverStep(
+    final step = NavigationManeuverStep(
       activeManeuver: activeManeuver,
       nextManeuver: nextManeuver,
       distanceToManeuverMeters: distanceToManeuver,
       maneuverIndex: activeIdx,
       isLastManeuver: activeIdx == maneuvers.length - 1,
     );
+    _lastResolvedStep = step;
+    return step;
   }
 
   /// Limpia la ruta activa al finalizar la navegación.
   void clear() {
     _route = null;
+    _lastResolvedStep = null;
     _cumulativeDistances.clear();
     _maneuverDistancesAlongRoute.clear();
   }

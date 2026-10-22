@@ -39,20 +39,32 @@ class NavigationPermissionDialog {
           ),
           content: const Text(
             'El sensor de ubicación de tu teléfono está apagado. Enciéndelo para que REstelar pueda fijar tu posición en el mapa y guiar tu ruta.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar', style: TextStyle(color: AppColors.textSecondary)),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.secondaryCyan),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.secondaryCyan,
+              ),
               onPressed: () async {
                 Navigator.of(ctx).pop();
                 await Geolocator.openLocationSettings();
               },
-              child: const Text('Abrir Ajustes GPS', style: TextStyle(color: Colors.black)),
+              child: const Text(
+                'Abrir Ajustes GPS',
+                style: TextStyle(color: Colors.black),
+              ),
             ),
           ],
         ),
@@ -86,20 +98,32 @@ class NavigationPermissionDialog {
           ),
           content: const Text(
             'El acceso a la ubicación fue denegado permanentemente. Para poder trazar rutas y guiarte en carretera, actívalo en los Ajustes de REstelar.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar', style: TextStyle(color: AppColors.textSecondary)),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGold),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGold,
+              ),
               onPressed: () async {
                 Navigator.of(ctx).pop();
                 await Geolocator.openAppSettings();
               },
-              child: const Text('Abrir Ajustes de la App', style: TextStyle(color: Colors.black)),
+              child: const Text(
+                'Abrir Ajustes de la App',
+                style: TextStyle(color: Colors.black),
+              ),
             ),
           ],
         ),
@@ -131,14 +155,22 @@ class NavigationPermissionDialog {
           children: [
             Text(
               'REstelar necesita acceso a tu ubicación precisa para:',
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             SizedBox(height: 8),
             Text(
               '• Trazar la ruta vial desde tu posición exacta.\n'
               '• Calcular tu velocidad en tiempo real.\n'
               '• Emitir indicaciones de voz y calcular giros antes de cada cruce.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
             ),
             SizedBox(height: 8),
             Text(
@@ -150,12 +182,20 @@ class NavigationPermissionDialog {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Ahora no', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Ahora no',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.secondaryCyan),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.secondaryCyan,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Continuar', style: TextStyle(color: Colors.black)),
+            child: const Text(
+              'Continuar',
+              style: TextStyle(color: Colors.black),
+            ),
           ),
         ],
       ),

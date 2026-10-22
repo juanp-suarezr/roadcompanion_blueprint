@@ -20,10 +20,13 @@ class Destination {
   const Destination({
     required this.id,
     required this.title,
-    required this.subtitle,
+    this.subtitle = '',
     required this.coordinates,
     this.category,
   });
+
+  /// Alias de compatibilidad para el título del destino.
+  String get name => title;
 
   Map<String, dynamic> toJson() => {
     'id': id,

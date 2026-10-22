@@ -38,13 +38,15 @@ class MockTripperBleService implements TripperBleService {
   List<TripperDevice> get discoveredDevices => _devices;
 
   @override
-  Stream<List<TripperDevice>> get discoveredDevicesStream => _devicesCtrl.stream;
+  Stream<List<TripperDevice>> get discoveredDevicesStream =>
+      _devicesCtrl.stream;
 
   @override
   List<TripperGattService> get discoveredGattServices => _gattServices;
 
   @override
-  Stream<List<TripperGattService>> get discoveredGattServicesStream => _gattCtrl.stream;
+  Stream<List<TripperGattService>> get discoveredGattServicesStream =>
+      _gattCtrl.stream;
 
   @override
   List<String> get diagnosticLogs => _logs;
@@ -59,10 +61,24 @@ class MockTripperBleService implements TripperBleService {
   Stream<String?> get scanErrorStream => _errorCtrl.stream;
 
   @override
+  String? get currentConnectionPhase => null;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> cancelPendingConnection() async {}
+
+  @override
+  String exportFullDiagnosticReport() => 'Mock BLE Report';
+
+  @override
   Future<bool> isBluetoothAvailable() async => bluetoothAvailable;
 
   @override
-  Future<void> startScan({Duration timeout = const Duration(seconds: 15)}) async {
+  Future<void> startScan({
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     _currentState = TripperConnectionState.scanning;
     _stateCtrl.add(_currentState);
   }
@@ -149,6 +165,9 @@ class MockVoiceNavigationService implements VoiceNavigationService {
   final _statusCtrl = StreamController<VoiceServiceStatus>.broadcast();
 
   @override
+  String? get lastSpokenText => null;
+
+  @override
   bool get isMuted => _isMuted;
 
   @override
@@ -225,7 +244,9 @@ void main() {
       voiceService.dispose();
     });
 
-    testWidgets('Renderiza controles completos sin pantalla en blanco', (tester) async {
+    testWidgets('Renderiza controles completos sin pantalla en blanco', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -247,19 +268,33 @@ void main() {
       // Verifica presencia de encabezado y secciones principales
       expect(find.text('Laboratorio Tripper & GPS'), findsOneWidget);
       expect(find.text('Permisos y Sensores (Android 16)'), findsOneWidget);
-      expect(find.text('Royal Enfield Tripper Pod (Meteor 350)'), findsOneWidget);
+      expect(
+        find.text('Royal Enfield Tripper Pod (Meteor 350)'),
+        findsOneWidget,
+      );
       expect(find.text('Servicios y Características GATT'), findsOneWidget);
-      expect(find.text('Motor de Voz TTS (Indicaciones de Casco)'), findsOneWidget);
-      expect(find.text('Fases de Validación — Royal Enfield Tripper'), findsOneWidget);
+      expect(
+        find.text('Motor de Voz TTS (Indicaciones de Casco)'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Fases de Validación — Royal Enfield Tripper'),
+        findsOneWidget,
+      );
       expect(find.text('Consola de Diagnóstico en Vivo'), findsOneWidget);
 
       // Botones esenciales
       expect(find.text('Buscar Tripper'), findsOneWidget);
       expect(find.text('Probar voz'), findsOneWidget);
-      expect(find.text('Copiar diagnóstico completo al portapapeles'), findsOneWidget);
+      expect(
+        find.text('Copiar diagnóstico completo al portapapeles'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('Muestra candidato Tripper detectado tras escaneo', (tester) async {
+    testWidgets('Muestra candidato Tripper detectado tras escaneo', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -293,7 +328,9 @@ void main() {
       expect(find.text('Conectar'), findsOneWidget);
     });
 
-    testWidgets('Muestra árbol de servicios GATT cuando está conectado', (tester) async {
+    testWidgets('Muestra árbol de servicios GATT cuando está conectado', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -335,13 +372,21 @@ void main() {
       ]);
       await tester.pumpAndSettle();
 
-      expect(find.text('Servicio UUID: 0000ffe0-0000-1000-8000-00805f9b34fb'), findsOneWidget);
-      expect(find.textContaining('Char: 0000ffe1-0000-1000-8000-00805f9b34fb'), findsOneWidget);
+      expect(
+        find.text('Servicio UUID: 0000ffe0-0000-1000-8000-00805f9b34fb'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Char: 0000ffe1-0000-1000-8000-00805f9b34fb'),
+        findsOneWidget,
+      );
       expect(find.textContaining('READ, WRITE, NOTIFY'), findsOneWidget);
       expect(find.text('ENLAZADO'), findsOneWidget);
     });
 
-    testWidgets('Ejecuta prueba de voz y muestra resultado interactivo', (tester) async {
+    testWidgets('Ejecuta prueba de voz y muestra resultado interactivo', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -368,227 +413,267 @@ void main() {
       expect(find.text('Prueba emitida correctamente.'), findsOneWidget);
     });
 
-    testWidgets('Muestra estado de lista vacía con instrucciones cuando no hay dispositivos', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+    testWidgets(
+      'Muestra estado de lista vacía con instrucciones cuando no hay dispositivos',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TripperDiagnosticScreen(
-            bleService: bleService,
-            voiceService: voiceService,
-            autoCheckHardware: false,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Sin dispositivos detectados'), findsOneWidget);
-      expect(find.text('Pasos para conectar tu Tripper Pod:'), findsOneWidget);
-      expect(find.text('Gira la llave de ignición de tu Meteor 350 a la posición ON.'), findsOneWidget);
-    });
-
-    testWidgets('Muestra estado de escaneo activo con spinner y botón de cancelar búsqueda', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TripperDiagnosticScreen(
-            bleService: bleService,
-            voiceService: voiceService,
-            autoCheckHardware: false,
+        expect(find.text('Sin dispositivos detectados'), findsOneWidget);
+        expect(
+          find.text('Pasos para conectar tu Tripper Pod:'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Gira la llave de ignición de tu Meteor 350 a la posición ON.',
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+          findsOneWidget,
+        );
+      },
+    );
 
-      // Iniciar escaneo con Buscar Tripper
-      await tester.tap(find.text('Buscar Tripper'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+    testWidgets(
+      'Muestra estado de escaneo activo con spinner y botón de cancelar búsqueda',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      expect(find.text('Cancelar búsqueda'), findsOneWidget);
-      expect(find.text('Buscando todos los periféricos BLE cercanos sin filtros...'), findsOneWidget);
-
-      // Cancelar búsqueda
-      await tester.tap(find.text('Cancelar búsqueda'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      expect(find.text('Buscar Tripper'), findsOneWidget);
-    });
-
-    testWidgets('Muestra registros de diagnóstico en tiempo real en la consola', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TripperDiagnosticScreen(
-            bleService: bleService,
-            voiceService: voiceService,
-            autoCheckHardware: false,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      bleService.emitLog('[ERROR] Error de conexión BLE con Tripper Pod timeout');
-      await tester.pumpAndSettle();
+        // Iniciar escaneo con Buscar Tripper
+        await tester.tap(find.text('Buscar Tripper'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.textContaining('Error de conexión BLE con Tripper Pod timeout'), findsOneWidget);
-    });
-
-    testWidgets('Muestra tres resultados BLE detectados con contador y detalles (1 candidato, 1 nombrado, 1 sin nombre)', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TripperDiagnosticScreen(
-            bleService: bleService,
-            voiceService: voiceService,
-            autoCheckHardware: false,
+        expect(find.text('Cancelar búsqueda'), findsOneWidget);
+        expect(
+          find.text(
+            'Buscando todos los periféricos BLE cercanos sin filtros...',
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+          findsOneWidget,
+        );
 
-      // Emitir 3 dispositivos
-      final d1 = TripperDevice.evaluate(
-        id: 'AA:BB:CC:11:22:33',
-        name: 'Royal Enfield Tripper',
-        rssi: -62,
-        serviceUuids: ['0000ffe0-0000-1000-8000-00805f9b34fb'],
-      );
-      final d2 = TripperDevice.evaluate(
-        id: 'BB:CC:DD:44:55:66',
-        name: 'Galaxy Watch 6',
-        rssi: -74,
-      );
-      final d3 = TripperDevice.evaluate(
-        id: 'CC:DD:EE:77:88:99',
-        name: '   ', // Nombre con solo espacios en blanco
-        rssi: -88,
-      );
+        // Cancelar búsqueda
+        await tester.tap(find.text('Cancelar búsqueda'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      bleService.emitDevice(d1);
-      bleService.emitDevice(d2);
-      bleService.emitDevice(d3);
-      await tester.pumpAndSettle();
+        expect(find.text('Buscar Tripper'), findsOneWidget);
+      },
+    );
 
-      // Verificar contador en encabezado
-      expect(find.text('Dispositivos encontrados (3)'), findsOneWidget);
+    testWidgets(
+      'Muestra registros de diagnóstico en tiempo real en la consola',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      // Verificar nombres y etiquetas
-      expect(find.text('Royal Enfield Tripper'), findsOneWidget);
-      expect(find.text('Galaxy Watch 6'), findsOneWidget);
-      expect(find.text('Dispositivo BLE sin nombre'), findsOneWidget);
-      expect(find.text('CANDIDATO TRIPPER (Alta)'), findsOneWidget);
-
-      // Verificar que los identificadores y RSSI se visualicen
-      expect(find.textContaining('AA:BB:CC:11:22:33'), findsOneWidget);
-      expect(find.textContaining('-62 dBm'), findsOneWidget);
-      expect(find.textContaining('BB:CC:DD:44:55:66'), findsOneWidget);
-      expect(find.textContaining('-74 dBm'), findsOneWidget);
-      expect(find.textContaining('CC:DD:EE:77:88:99'), findsOneWidget);
-      expect(find.textContaining('-88 dBm'), findsOneWidget);
-    });
-
-    testWidgets('Actualiza reactivamente el RSSI de un dispositivo existente sin duplicar el identificador', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TripperDiagnosticScreen(
-            bleService: bleService,
-            voiceService: voiceService,
-            autoCheckHardware: false,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final initialDevice = TripperDevice.evaluate(
-        id: '12:34:56:78:9A:BC',
-        name: 'Meteor Tripper',
-        rssi: -85,
-      );
-      bleService.updateOrAddDevice(initialDevice);
-      await tester.pumpAndSettle();
+        bleService.emitLog(
+          '[ERROR] Error de conexión BLE con Tripper Pod timeout',
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Dispositivos encontrados (1)'), findsOneWidget);
-      expect(find.textContaining('-85 dBm'), findsOneWidget);
+        expect(
+          find.textContaining('Error de conexión BLE con Tripper Pod timeout'),
+          findsOneWidget,
+        );
+      },
+    );
 
-      // Actualizar RSSI del mismo dispositivo (la señal mejora a -58 dBm)
-      final updatedDevice = initialDevice.copyWith(rssi: -58);
-      bleService.updateOrAddDevice(updatedDevice);
-      await tester.pumpAndSettle();
+    testWidgets(
+      'Muestra tres resultados BLE detectados con contador y detalles (1 candidato, 1 nombrado, 1 sin nombre)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      // Debe seguir habiendo exactamente 1 dispositivo y mostrar el nuevo RSSI
-      expect(find.text('Dispositivos encontrados (1)'), findsOneWidget);
-      expect(find.textContaining('-58 dBm'), findsOneWidget);
-      expect(find.textContaining('-85 dBm'), findsNothing);
-    });
-
-    testWidgets('Muestra banner de error visible ante fallos de escaneo o conversión BLE', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TripperDiagnosticScreen(
-            bleService: bleService,
-            voiceService: voiceService,
-            autoCheckHardware: false,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+        // Emitir 3 dispositivos
+        final d1 = TripperDevice.evaluate(
+          id: 'AA:BB:CC:11:22:33',
+          name: 'Royal Enfield Tripper',
+          rssi: -62,
+          serviceUuids: ['0000ffe0-0000-1000-8000-00805f9b34fb'],
+        );
+        final d2 = TripperDevice.evaluate(
+          id: 'BB:CC:DD:44:55:66',
+          name: 'Galaxy Watch 6',
+          rssi: -74,
+        );
+        final d3 = TripperDevice.evaluate(
+          id: 'CC:DD:EE:77:88:99',
+          name: '   ', // Nombre con solo espacios en blanco
+          rssi: -88,
+        );
 
-      // Emitir un error concreto de escaneo
-      bleService.emitScanError('Error al procesar paquete BLE del periférico: formato corrupto');
-      await tester.pumpAndSettle();
+        bleService.emitDevice(d1);
+        bleService.emitDevice(d2);
+        bleService.emitDevice(d3);
+        await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
-      expect(
-        find.text('Error al procesar paquete BLE del periférico: formato corrupto'),
-        findsOneWidget,
-      );
+        // Verificar contador en encabezado
+        expect(find.text('Dispositivos encontrados (3)'), findsOneWidget);
 
-      // Cerrar banner
-      await tester.tap(find.byIcon(Icons.close_rounded));
-      await tester.pumpAndSettle();
+        // Verificar nombres y etiquetas
+        expect(find.text('Royal Enfield Tripper'), findsOneWidget);
+        expect(find.text('Galaxy Watch 6'), findsOneWidget);
+        expect(find.text('Dispositivo BLE sin nombre'), findsOneWidget);
+        expect(find.text('CANDIDATO TRIPPER (Alta)'), findsOneWidget);
 
-      expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
-    });
+        // Verificar que los identificadores y RSSI se visualicen
+        expect(find.textContaining('AA:BB:CC:11:22:33'), findsOneWidget);
+        expect(find.textContaining('-62 dBm'), findsOneWidget);
+        expect(find.textContaining('BB:CC:DD:44:55:66'), findsOneWidget);
+        expect(find.textContaining('-74 dBm'), findsOneWidget);
+        expect(find.textContaining('CC:DD:EE:77:88:99'), findsOneWidget);
+        expect(find.textContaining('-88 dBm'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Actualiza reactivamente el RSSI de un dispositivo existente sin duplicar el identificador',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final initialDevice = TripperDevice.evaluate(
+          id: '12:34:56:78:9A:BC',
+          name: 'Meteor Tripper',
+          rssi: -85,
+        );
+        bleService.updateOrAddDevice(initialDevice);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Dispositivos encontrados (1)'), findsOneWidget);
+        expect(find.textContaining('-85 dBm'), findsOneWidget);
+
+        // Actualizar RSSI del mismo dispositivo (la señal mejora a -58 dBm)
+        final updatedDevice = initialDevice.copyWith(rssi: -58);
+        bleService.updateOrAddDevice(updatedDevice);
+        await tester.pumpAndSettle();
+
+        // Debe seguir habiendo exactamente 1 dispositivo y mostrar el nuevo RSSI
+        expect(find.text('Dispositivos encontrados (1)'), findsOneWidget);
+        expect(find.textContaining('-58 dBm'), findsOneWidget);
+        expect(find.textContaining('-85 dBm'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Muestra banner de error visible ante fallos de escaneo o conversión BLE',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TripperDiagnosticScreen(
+              bleService: bleService,
+              voiceService: voiceService,
+              autoCheckHardware: false,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+
+        // Emitir un error concreto de escaneo
+        bleService.emitScanError(
+          'Error al procesar paquete BLE del periférico: formato corrupto',
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+        expect(
+          find.text(
+            'Error al procesar paquete BLE del periférico: formato corrupto',
+          ),
+          findsOneWidget,
+        );
+
+        // Cerrar banner
+        await tester.tap(find.byIcon(Icons.close_rounded));
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+      },
+    );
   });
 }

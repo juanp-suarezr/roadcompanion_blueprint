@@ -39,7 +39,8 @@ class GpsPosition {
   double? get speedKmh => hasSpeed ? (speedMps! * 3.6) : null;
 
   /// Antigüedad transcurrida desde la captura de la lectura respecto a [currentTime].
-  Duration age(DateTime currentTime) => currentTime.difference(timestamp);
+  Duration age([DateTime? currentTime]) =>
+      (currentTime ?? DateTime.now()).difference(timestamp);
 
   @override
   bool operator ==(Object other) =>

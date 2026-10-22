@@ -55,12 +55,12 @@ class OsrmRoutingService implements RoutingService {
     RoadAccessRestrictionRegistry? restrictionRegistry,
     OsmAccessService? osmAccessService,
     SmartNavigationMemoryService? memoryService,
-  })  : _client = client ?? http.Client(),
-        _baseUrl = baseUrl,
-        _restrictionRegistry =
-            restrictionRegistry ?? RoadAccessRestrictionRegistry(),
-        _osmAccessService = osmAccessService ?? OsmAccessService(client: client),
-        _memoryService = memoryService;
+  }) : _client = client ?? http.Client(),
+       _baseUrl = baseUrl,
+       _restrictionRegistry =
+           restrictionRegistry ?? RoadAccessRestrictionRegistry(),
+       _osmAccessService = osmAccessService ?? OsmAccessService(client: client),
+       _memoryService = memoryService;
 
   RoadAccessRestrictionRegistry get restrictionRegistry => _restrictionRegistry;
   OsmAccessService get osmAccessService => _osmAccessService;
@@ -76,6 +76,100 @@ class OsrmRoutingService implements RoutingService {
       destination: destination,
     );
     return routes.first;
+  }
+
+  @override
+  Future<CalculatedRoute> calculateMultistopRoute({
+    required Coordinates origin,
+    required List<Coordinates> waypoints,
+    required Coordinates destination,
+  }) async {
+    if (waypoints.isEmpty) {
+      return calculateRoute(origin: origin, destination: destination);
+    }
+
+    if (_memoryService != null) {
+      _memoryService.syncWithRestrictionRegistry(_restrictionRegistry);
+    }
+
+    final coordsList = [origin, ...waypoints, destination];
+    final coordsSegment = coordsList
+        .map(
+          (c) =>
+              '${c.longitude.toStringAsFixed(6)},${c.latitude.toStringAsFixed(6)}',
+        )
+        .join(';');
+
+    final uri = Uri.parse(
+      '$_baseUrl/route/v1/driving/$coordsSegment?overview=full&geometries=geojson&steps=true&annotations=nodes,distance',
+    );
+
+    try {
+      final response = await _client
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent':
+                  'REstelarNavigationApp/1.0 (motorcycle route companion)',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        throw HttpException(
+          'Error del motor de rutas multiparada (HTTP ${response.statusCode})',
+          uri: uri,
+        );
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final code = data['code'] as String?;
+
+      if (code != 'Ok') {
+        final message = data['message'] as String? ?? 'Ruta no disponible';
+        throw NoRouteFoundException('El motor OSRM reportó: $message');
+      }
+
+      final rawRoutes = data['routes'] as List<dynamic>?;
+      if (rawRoutes == null || rawRoutes.isEmpty) {
+        throw const NoRouteFoundException();
+      }
+
+      final routeMap = rawRoutes.first as Map<String, dynamic>;
+      final annotationNodes = <int>[];
+      final legs = routeMap['legs'] as List<dynamic>?;
+      if (legs != null) {
+        for (final leg in legs) {
+          if (leg is! Map<String, dynamic>) continue;
+          final nodes = leg['annotation']?['nodes'] as List<dynamic>?;
+          if (nodes != null) {
+            for (final n in nodes) {
+              if (n is num) annotationNodes.add(n.toInt());
+            }
+          }
+        }
+      }
+
+      final parsed = _parseSingleRoute(
+        routeMap,
+        origin: origin,
+        destination: destination,
+        index: 0,
+        annotationNodes: annotationNodes,
+        overrideRouteName: 'Itinerario (${waypoints.length} paradas)',
+      );
+
+      if (parsed == null) {
+        throw const InvalidRouteGeometryException();
+      }
+
+      return parsed;
+    } on TimeoutException {
+      throw const SocketException(
+        'Tiempo de espera agotado al calcular la ruta multiparada.',
+      );
+    }
   }
 
   @override
@@ -98,13 +192,16 @@ class OsrmRoutingService implements RoutingService {
     );
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'REstelarNavigationApp/1.0 (motorcycle route companion)',
-        },
-      ).timeout(const Duration(seconds: 12));
+      final response = await _client
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent':
+                  'REstelarNavigationApp/1.0 (motorcycle route companion)',
+            },
+          )
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode != 200) {
         throw HttpException(
@@ -133,7 +230,9 @@ class OsrmRoutingService implements RoutingService {
       for (int i = 0; i < rawRoutes.length; i++) {
         final routeMap = rawRoutes[i];
         if (routeMap is! Map<String, dynamic>) {
-          discardReasons.add('Ruta ${i + 1} descartada: formato JSON no reconocido');
+          discardReasons.add(
+            'Ruta ${i + 1} descartada: formato JSON no reconocido',
+          );
           continue;
         }
 
@@ -164,15 +263,17 @@ class OsrmRoutingService implements RoutingService {
           var activeRoute = parsed;
           // Evaluar si la ruta atraviesa zonas con reportes locales no confirmados (generar advertencia preventiva)
           if (_memoryService != null) {
-            final nearbyReports =
-                _memoryService.checkReportsAlongRoute(activeRoute.geometry);
+            final nearbyReports = _memoryService.checkReportsAlongRoute(
+              activeRoute.geometry,
+            );
             for (final rep in nearbyReports) {
               if (rep.status != ReportVerificationStatus.confirmed) {
                 final caution =
                     'Aviso local (${rep.typeLabel}): ${rep.description}';
                 if (!activeRoute.validation.warnings.contains(caution)) {
-                  final newWarnings =
-                      List<String>.from(activeRoute.validation.warnings)..add(caution);
+                  final newWarnings = List<String>.from(
+                    activeRoute.validation.warnings,
+                  )..add(caution);
                   activeRoute = activeRoute.copyWith(
                     validation: activeRoute.validation.copyWith(
                       warnings: newWarnings,
@@ -269,10 +370,12 @@ class OsrmRoutingService implements RoutingService {
       // Si hay múltiples rutas, calcular diferencias relativas y etiquetas
       if (sortedRoutes.length > 1) {
         // Buscar el mínimo entre las rutas transitables para no premiar atajos privados prohibidos
-        final publicRoutes =
-            sortedRoutes.where((r) => r.isPubliclyPassable).toList();
-        final candidatePool =
-            publicRoutes.isNotEmpty ? publicRoutes : sortedRoutes;
+        final publicRoutes = sortedRoutes
+            .where((r) => r.isPubliclyPassable)
+            .toList();
+        final candidatePool = publicRoutes.isNotEmpty
+            ? publicRoutes
+            : sortedRoutes;
 
         Duration minDuration = candidatePool.first.estimatedDuration;
         double minDistance = candidatePool.first.totalDistanceKm;
@@ -316,7 +419,8 @@ class OsrmRoutingService implements RoutingService {
           final assignedName = 'Ruta ${i + 1}';
           final isFastest =
               r.isPubliclyPassable && r.estimatedDuration == minDuration;
-          final isShortest = r.isPubliclyPassable &&
+          final isShortest =
+              r.isPubliclyPassable &&
               (r.totalDistanceKm - minDistance).abs() < 0.05;
           final isPreferred = r.isPubliclyPassable && r == preferredCandidate;
           final isBalanced =
@@ -333,8 +437,9 @@ class OsrmRoutingService implements RoutingService {
               isBalanced: isBalanced,
               isPreferred: isPreferred,
               distanceDiffKm: distDiff > 0.05 ? distDiff : null,
-              durationDiff:
-                  durDiff > const Duration(seconds: 30) ? durDiff : null,
+              durationDiff: durDiff > const Duration(seconds: 30)
+                  ? durDiff
+                  : null,
             ),
           );
         }
@@ -343,8 +448,7 @@ class OsrmRoutingService implements RoutingService {
         final finalizedRoutes = <CalculatedRoute>[];
         for (int i = 0; i < enrichedRoutes.length; i++) {
           final current = enrichedRoutes[i];
-          final siblings =
-              enrichedRoutes.where((e) => e != current).toList();
+          final siblings = enrichedRoutes.where((e) => e != current).toList();
           finalizedRoutes.add(current.copyWith(alternatives: siblings));
         }
 
@@ -410,15 +514,15 @@ class OsrmRoutingService implements RoutingService {
 
     // Calcular el rumbo de aproximación de la calzada pública antes del giro prohibido
     final approachIndex = max(0, closestIndex - 3);
-    final approachBearing =
-        coords[approachIndex].bearingTo(coords[closestIndex]);
+    final approachBearing = coords[approachIndex].bearingTo(
+      coords[closestIndex],
+    );
 
     // Distancias de proyección hacia adelante a lo largo del corredor arterial público
     final bypassDistances = [250.0, 350.0, 180.0, 450.0];
 
     for (final dist in bypassDistances) {
-      final bypassPoint =
-          coords[closestIndex].project(approachBearing, dist);
+      final bypassPoint = coords[closestIndex].project(approachBearing, dist);
 
       final bypassSegment =
           '${origin.longitude.toStringAsFixed(6)},${origin.latitude.toStringAsFixed(6)};'
@@ -430,13 +534,16 @@ class OsrmRoutingService implements RoutingService {
       );
 
       try {
-        final response = await _client.get(
-          uri,
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'REstelarNavigationApp/1.0 (motorcycle route companion)',
-          },
-        ).timeout(const Duration(seconds: 10));
+        final response = await _client
+            .get(
+              uri,
+              headers: {
+                'Accept': 'application/json',
+                'User-Agent':
+                    'REstelarNavigationApp/1.0 (motorcycle route companion)',
+              },
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (response.statusCode != 200) continue;
 
@@ -494,8 +601,8 @@ class OsrmRoutingService implements RoutingService {
     List<int>? annotationNodes,
     String? overrideRouteName,
   }) {
-    final distanceMeters = (routeMap['distance'] as num?)?.toDouble() ?? 0.0;
-    final durationSeconds = (routeMap['duration'] as num?)?.toDouble() ?? 0.0;
+    var distanceMeters = (routeMap['distance'] as num?)?.toDouble() ?? 0.0;
+    var durationSeconds = (routeMap['duration'] as num?)?.toDouble() ?? 0.0;
 
     // 1. Extraer geometría GeoJSON [lon, lat] -> Coordinates(lat, lon)
     final geometryMap = routeMap['geometry'] as Map<String, dynamic>?;
@@ -525,6 +632,15 @@ class OsrmRoutingService implements RoutingService {
     final summaryParts = <String>{};
 
     if (legs != null && legs.isNotEmpty) {
+      if (distanceMeters == 0.0) {
+        for (final leg in legs) {
+          if (leg is Map<String, dynamic>) {
+            distanceMeters += (leg['distance'] as num?)?.toDouble() ?? 0.0;
+            durationSeconds += (leg['duration'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      }
+
       for (int l = 0; l < legs.length; l++) {
         final leg = legs[l];
         if (leg is! Map<String, dynamic>) continue;
@@ -539,10 +655,29 @@ class OsrmRoutingService implements RoutingService {
             if (step is! Map<String, dynamic>) continue;
             rawStepsList.add(step);
 
-            // Omitir llegada intermedia entre piernas para no interrumpir el flujo del viaje
+            // Tratar llegada intermedia entre piernas con instrucción explícita
             final isIntermediateArrival =
                 l < legs.length - 1 && s == steps.length - 1;
             if (isIntermediateArrival) {
+              final stepManeuver = step['maneuver'] as Map<String, dynamic>?;
+              final coordsList = stepManeuver?['location'] as List<dynamic>?;
+              Coordinates maneuverLocation = destination;
+              if (coordsList != null && coordsList.length >= 2) {
+                final lon = (coordsList[0] as num).toDouble();
+                final lat = (coordsList[1] as num).toDouble();
+                if (lat.isFinite && lon.isFinite) {
+                  maneuverLocation = Coordinates(lat, lon);
+                }
+              }
+              maneuvers.add(
+                Maneuver(
+                  instructionText: 'Llegada a parada intermedia ${l + 1}',
+                  type: ManeuverType.arrive,
+                  location: maneuverLocation,
+                  distanceMeters: (step['distance'] as num?)?.toDouble() ?? 0.0,
+                  roadName: step['name'] as String?,
+                ),
+              );
               continue;
             }
 
@@ -692,8 +827,9 @@ class OsrmRoutingService implements RoutingService {
     required String modifier,
     String? roadName,
   }) {
-    final roadPart =
-        (roadName != null && roadName.isNotEmpty) ? ' hacia $roadName' : '';
+    final roadPart = (roadName != null && roadName.isNotEmpty)
+        ? ' hacia $roadName'
+        : '';
 
     switch (type) {
       case ManeuverType.depart:

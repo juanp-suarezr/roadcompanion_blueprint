@@ -31,7 +31,8 @@ class TripperDiagnosticScreen extends StatefulWidget {
   });
 
   @override
-  State<TripperDiagnosticScreen> createState() => _TripperDiagnosticScreenState();
+  State<TripperDiagnosticScreen> createState() =>
+      _TripperDiagnosticScreenState();
 }
 
 class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
@@ -83,7 +84,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
       if (mounted) setState(() => _devices = List.from(devs));
     });
 
-    _gattSub = widget.bleService.discoveredGattServicesStream.listen((services) {
+    _gattSub = widget.bleService.discoveredGattServicesStream.listen((
+      services,
+    ) {
       if (mounted) setState(() => _gattServices = List.from(services));
     });
 
@@ -102,12 +105,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
 
     if (widget.autoCheckHardware) {
       try {
-        _adapterStateSub = FlutterBluePlus.adapterState.listen(
-          (state) {
-            if (mounted) setState(() => _adapterState = state);
-          },
-          onError: (_) {},
-        );
+        _adapterStateSub = FlutterBluePlus.adapterState.listen((state) {
+          if (mounted) setState(() => _adapterState = state);
+        }, onError: (_) {});
       } catch (_) {}
       _refreshHardwareAndPermissions();
     }
@@ -204,8 +204,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         Permission.bluetoothConnect,
       ].request();
 
-      final scanStatus = statuses[Permission.bluetoothScan] ?? PermissionStatus.denied;
-      final connectStatus = statuses[Permission.bluetoothConnect] ?? PermissionStatus.denied;
+      final scanStatus =
+          statuses[Permission.bluetoothScan] ?? PermissionStatus.denied;
+      final connectStatus =
+          statuses[Permission.bluetoothConnect] ?? PermissionStatus.denied;
 
       if (mounted) {
         setState(() {
@@ -215,7 +217,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
       }
 
       final isGranted = scanStatus.isGranted && connectStatus.isGranted;
-      if (!isGranted && (scanStatus.isPermanentlyDenied || connectStatus.isPermanentlyDenied) && mounted) {
+      if (!isGranted &&
+          (scanStatus.isPermanentlyDenied ||
+              connectStatus.isPermanentlyDenied) &&
+          mounted) {
         _showBlePermanentlyDeniedDialog();
       }
       return isGranted;
@@ -243,20 +248,32 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         ),
         content: const Text(
           'Android 16 requiere permisos de "Dispositivos cercanos" para descubrir y conectarse al Tripper Pod de tu Royal Enfield. Habilítalos en Ajustes.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            height: 1.4,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGold),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryGold,
+            ),
             onPressed: () async {
               Navigator.of(ctx).pop();
               await openAppSettings();
             },
-            child: const Text('Abrir Ajustes', style: TextStyle(color: Colors.black)),
+            child: const Text(
+              'Abrir Ajustes',
+              style: TextStyle(color: Colors.black),
+            ),
           ),
         ],
       ),
@@ -269,7 +286,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     if (!hasPerm && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Se requieren permisos de Dispositivos Cercanos para buscar el Tripper.'),
+          content: Text(
+            'Se requieren permisos de Dispositivos Cercanos para buscar el Tripper.',
+          ),
           backgroundColor: AppColors.error,
           duration: Duration(seconds: 3),
         ),
@@ -287,7 +306,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('El Bluetooth está apagado. Enciéndelo para buscar dispositivos.'),
+            content: Text(
+              'El Bluetooth está apagado. Enciéndelo para buscar dispositivos.',
+            ),
             backgroundColor: AppColors.warning,
             duration: Duration(seconds: 3),
           ),
@@ -312,11 +333,12 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   }
 
   void _copyLogsToClipboard() {
-    final text = _logs.join('\n');
+    final report = widget.bleService.exportFullDiagnosticReport();
+    final text = report.isNotEmpty ? report : _logs.join('\n');
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Diagnóstico técnico copiado al portapapeles.'),
+        content: Text('Informe de diagnóstico BLE copiado al portapapeles.'),
         backgroundColor: AppColors.surfaceAccent,
         duration: Duration(seconds: 2),
       ),
@@ -325,7 +347,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
 
   Future<void> _handleTestVoice() async {
     if (widget.voiceService == null) {
-      setState(() => _voiceTestResult = 'Servicio de voz no inyectado en esta pantalla.');
+      setState(
+        () =>
+            _voiceTestResult = 'Servicio de voz no inyectado en esta pantalla.',
+      );
       return;
     }
 
@@ -370,16 +395,16 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             ),
             Text(
               'Laboratorio Tripper & GPS',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 11,
-              ),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline_rounded, color: AppColors.primaryGold),
+            icon: const Icon(
+              Icons.info_outline_rounded,
+              color: AppColors.primaryGold,
+            ),
             tooltip: 'Información de Segundo Plano',
             onPressed: () => BackgroundTrackingInfoDialog.show(context),
           ),
@@ -431,7 +456,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.security_rounded, color: AppColors.secondaryCyan, size: 18),
+              const Icon(
+                Icons.security_rounded,
+                color: AppColors.secondaryCyan,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'Permisos y Sensores (Android 16)',
@@ -446,11 +475,18 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondaryCyan),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.secondaryCyan,
+                  ),
                 )
               else
                 IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 18, color: AppColors.textSecondary),
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
                   tooltip: 'Actualizar estado',
                   onPressed: _refreshHardwareAndPermissions,
                 ),
@@ -478,22 +514,48 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ),
             ],
           ),
-          if (!isLocGranted || !_isGpsServiceEnabled || !_isBluetoothAvailable) ...[
+          if (!isLocGranted ||
+              !_isGpsServiceEnabled ||
+              !_isBluetoothAvailable) ...[
             const SizedBox(height: 10),
             Row(
               children: [
                 if (!_isGpsServiceEnabled)
                   TextButton.icon(
-                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    icon: const Icon(Icons.settings, size: 14, color: AppColors.primaryGold),
-                    label: const Text('Ajustes GPS', style: TextStyle(fontSize: 11, color: AppColors.primaryGold)),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(
+                      Icons.settings,
+                      size: 14,
+                      color: AppColors.primaryGold,
+                    ),
+                    label: const Text(
+                      'Ajustes GPS',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primaryGold,
+                      ),
+                    ),
                     onPressed: () => Geolocator.openLocationSettings(),
                   ),
                 if (!isLocGranted)
                   TextButton.icon(
-                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    icon: const Icon(Icons.app_settings_alt, size: 14, color: AppColors.secondaryCyan),
-                    label: const Text('Ajustes App', style: TextStyle(fontSize: 11, color: AppColors.secondaryCyan)),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(
+                      Icons.app_settings_alt,
+                      size: 14,
+                      color: AppColors.secondaryCyan,
+                    ),
+                    label: const Text(
+                      'Ajustes App',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.secondaryCyan,
+                      ),
+                    ),
                     onPressed: () => Geolocator.openAppSettings(),
                   ),
               ],
@@ -528,7 +590,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           children: [
             Text(
               label,
-              style: const TextStyle(fontSize: 9.5, color: AppColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 9.5,
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: 2),
             Text(
@@ -549,15 +614,18 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     final bool isTracking = tracker?.isTracking ?? false;
     final int savedPoints = tracker?.recordedPositions.length ?? 0;
     final double? accuracy = tracker?.currentPosition?.accuracyMeters;
-    final String accuracyStr =
-        accuracy != null ? '±${accuracy.toStringAsFixed(1)} m' : 'Sin señal';
+    final String accuracyStr = accuracy != null
+        ? '±${accuracy.toStringAsFixed(1)} m'
+        : 'Sin señal';
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.backgroundCard,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isTracking ? AppColors.primaryGold : AppColors.cardBorder),
+        border: Border.all(
+          color: isTracking ? AppColors.primaryGold : AppColors.cardBorder,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -566,7 +634,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             children: [
               Icon(
                 Icons.satellite_alt_rounded,
-                color: isTracking ? AppColors.primaryGold : AppColors.textSecondary,
+                color: isTracking
+                    ? AppColors.primaryGold
+                    : AppColors.textSecondary,
                 size: 18,
               ),
               const SizedBox(width: 8),
@@ -619,7 +689,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               const SizedBox(width: 8),
               _buildMetricChip(
                 label: 'Duración',
-                value: _formatDuration(tracker?.sessionDuration ?? Duration.zero),
+                value: _formatDuration(
+                  tracker?.sessionDuration ?? Duration.zero,
+                ),
                 icon: Icons.timer_outlined,
               ),
             ],
@@ -627,6 +699,27 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         ],
       ),
     );
+  }
+
+  String _getPhaseLabel(String? phase) {
+    switch (phase) {
+      case 'deteniendo_escaneo':
+        return 'Liberando radio...';
+      case 'solicitando_enlace':
+        return 'Enlazando...';
+      case 'esperando_confirmacion':
+        return 'Esperando conexión...';
+      case 'descubriendo_servicios':
+        return 'Leyendo GATT...';
+      case 'conectado':
+        return 'Conectado';
+      case 'error':
+        return 'Error de enlace';
+      case 'cancelado':
+        return 'Cancelado';
+      default:
+        return 'Conectando...';
+    }
   }
 
   String _getAdapterStateLabel() {
@@ -663,7 +756,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     if (_bleScanStatus.isGranted && _bleConnectStatus.isGranted) {
       return 'Concedidos';
     }
-    if (_bleScanStatus.isPermanentlyDenied || _bleConnectStatus.isPermanentlyDenied) {
+    if (_bleScanStatus.isPermanentlyDenied ||
+        _bleConnectStatus.isPermanentlyDenied) {
       return 'Denegados (Ajustes)';
     }
     if (_bleScanStatus.isDenied || _bleConnectStatus.isDenied) {
@@ -676,7 +770,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     if (_bleScanStatus.isGranted && _bleConnectStatus.isGranted) {
       return Colors.greenAccent;
     }
-    if (_bleScanStatus.isPermanentlyDenied || _bleConnectStatus.isPermanentlyDenied) {
+    if (_bleScanStatus.isPermanentlyDenied ||
+        _bleConnectStatus.isPermanentlyDenied) {
       return Colors.redAccent;
     }
     if (_bleScanStatus.isDenied || _bleConnectStatus.isDenied) {
@@ -712,7 +807,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5, height: 1.3),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11.5,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -763,7 +862,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.primaryGold, size: 18),
+              Icon(
+                Icons.info_outline_rounded,
+                color: AppColors.primaryGold,
+                size: 18,
+              ),
               SizedBox(width: 8),
               Text(
                 'Sin dispositivos detectados',
@@ -778,12 +881,25 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           const SizedBox(height: 10),
           const Text(
             'Pasos para conectar tu Tripper Pod:',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
-          _buildStepRow('1', 'Gira la llave de ignición de tu Meteor 350 a la posición ON.'),
-          _buildStepRow('2', 'Observa que la pantalla circular del Tripper encienda.'),
-          _buildStepRow('3', 'Toca "Buscar Tripper" (el Tripper anuncia BLE durante los primeros 120 segundos).'),
+          _buildStepRow(
+            '1',
+            'Gira la llave de ignición de tu Meteor 350 a la posición ON.',
+          ),
+          _buildStepRow(
+            '2',
+            'Observa que la pantalla circular del Tripper encienda.',
+          ),
+          _buildStepRow(
+            '3',
+            'Toca "Buscar Tripper" (el Tripper anuncia BLE durante los primeros 120 segundos).',
+          ),
         ],
       ),
     );
@@ -791,8 +907,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
 
   Widget _buildBleSection() {
     final bool isScanning = _connectionState == TripperConnectionState.scanning;
-    final bool isConnected = _connectionState == TripperConnectionState.connected;
-    final bool isConnecting = _connectionState == TripperConnectionState.connecting;
+    final bool isConnected =
+        _connectionState == TripperConnectionState.connected;
+    final bool isConnecting =
+        _connectionState == TripperConnectionState.connecting;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -806,7 +924,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.bluetooth_searching_rounded, color: AppColors.secondaryCyan, size: 20),
+              const Icon(
+                Icons.bluetooth_searching_rounded,
+                color: AppColors.secondaryCyan,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Column(
@@ -845,7 +967,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           const SizedBox(height: 6),
           const Text(
             'Enciende la moto y el Tripper para buscar dispositivos cercanos.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.3),
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              height: 1.3,
+            ),
           ),
           const SizedBox(height: 12),
           // Estado de Adaptador y Permisos
@@ -854,39 +980,65 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             runSpacing: 6,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _getAdapterStateColor().withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _getAdapterStateColor().withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: _getAdapterStateColor().withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.bluetooth_rounded, size: 14, color: _getAdapterStateColor()),
+                    Icon(
+                      Icons.bluetooth_rounded,
+                      size: 14,
+                      color: _getAdapterStateColor(),
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Bluetooth: ${_getAdapterStateLabel()}',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _getAdapterStateColor()),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _getAdapterStateColor(),
+                      ),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _getPermissionsColor().withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _getPermissionsColor().withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: _getPermissionsColor().withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.security_rounded, size: 14, color: _getPermissionsColor()),
+                    Icon(
+                      Icons.security_rounded,
+                      size: 14,
+                      color: _getPermissionsColor(),
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Permisos BLE: ${_getPermissionsLabel()}',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _getPermissionsColor()),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _getPermissionsColor(),
+                      ),
                     ),
                   ],
                 ),
@@ -900,16 +1052,29 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isScanning ? Colors.red.shade800 : AppColors.secondaryCyan,
+                    backgroundColor: isScanning
+                        ? Colors.red.shade800
+                        : AppColors.secondaryCyan,
                     foregroundColor: Colors.white,
                     minimumSize: const Size(0, 44),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                   ),
-                  icon: Icon(isScanning ? Icons.stop_rounded : Icons.search_rounded, size: 18),
+                  icon: Icon(
+                    isScanning ? Icons.stop_rounded : Icons.search_rounded,
+                    size: 18,
+                  ),
                   label: Text(
                     isScanning ? 'Cancelar búsqueda' : 'Buscar Tripper',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   onPressed: () {
                     if (isScanning) {
@@ -927,13 +1092,37 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     foregroundColor: Colors.redAccent,
                     side: const BorderSide(color: Colors.redAccent),
                     minimumSize: const Size(0, 44),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   icon: const Icon(Icons.bluetooth_disabled_rounded, size: 16),
-                  label: const Text('Desconectar', style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Desconectar',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   onPressed: () => widget.bleService.disconnect(),
                 ),
             ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.secondaryCyan,
+              side: BorderSide(
+                color: AppColors.secondaryCyan.withValues(alpha: 0.5),
+              ),
+              minimumSize: const Size.fromHeight(38),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: const Icon(Icons.description_outlined, size: 16),
+            label: const Text(
+              'Copiar Informe Técnico BLE Completo',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            onPressed: _copyLogsToClipboard,
           ),
           if (_scanError != null) ...[
             Container(
@@ -942,21 +1131,35 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               decoration: BoxDecoration(
                 color: Colors.redAccent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+                border: Border.all(
+                  color: Colors.redAccent.withValues(alpha: 0.4),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    color: Colors.redAccent,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _scanError!,
-                      style: const TextStyle(color: Colors.redAccent, fontSize: 11.5, height: 1.3),
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 11.5,
+                        height: 1.3,
+                      ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.textSecondary),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: AppColors.textSecondary,
+                    ),
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -984,15 +1187,25 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                   const SizedBox(
                     width: 12,
                     height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.secondaryCyan),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: AppColors.secondaryCyan,
+                    ),
                   ),
                   const SizedBox(width: 6),
                   const Text(
                     'Actualizando en vivo...',
-                    style: TextStyle(color: AppColors.secondaryCyan, fontSize: 11),
+                    style: TextStyle(
+                      color: AppColors.secondaryCyan,
+                      fontSize: 11,
+                    ),
                   ),
                 ] else ...[
-                  const Icon(Icons.check_circle_outline_rounded, color: Colors.greenAccent, size: 14),
+                  const Icon(
+                    Icons.check_circle_outline_rounded,
+                    color: Colors.greenAccent,
+                    size: 14,
+                  ),
                   const SizedBox(width: 4),
                   const Text(
                     'Búsqueda finalizada',
@@ -1002,9 +1215,7 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            Column(
-              children: _devices.map((d) => _buildDeviceItem(d)).toList(),
-            ),
+            Column(children: _devices.map((d) => _buildDeviceItem(d)).toList()),
           ],
         ],
       ),
@@ -1014,14 +1225,20 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   Widget _buildDeviceItem(TripperDevice device) {
     final bool isThisConnected =
         widget.bleService.connectedDevice?.id == device.id &&
-            _connectionState == TripperConnectionState.connected;
+        _connectionState == TripperConnectionState.connected;
     final bool isThisConnecting =
         widget.bleService.connectedDevice?.id == device.id &&
-            _connectionState == TripperConnectionState.connecting;
+        _connectionState == TripperConnectionState.connecting;
 
-    final bool isUnnamed = device.name.trim().isEmpty || device.name == 'Dispositivo BLE sin nombre';
-    final String effectiveName = isUnnamed ? 'Dispositivo BLE sin nombre' : device.name.trim();
-    final String effectiveId = device.id.trim().isEmpty ? 'ID no disponible' : device.id.trim();
+    final bool isUnnamed =
+        device.name.trim().isEmpty ||
+        device.name == 'Dispositivo BLE sin nombre';
+    final String effectiveName = isUnnamed
+        ? 'Dispositivo BLE sin nombre'
+        : device.name.trim();
+    final String effectiveId = device.id.trim().isEmpty
+        ? 'ID no disponible'
+        : device.id.trim();
 
     Color rssiColor;
     if (device.rssi >= -65) {
@@ -1068,9 +1285,15 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                       child: Text(
                         effectiveName,
                         style: TextStyle(
-                          color: isUnnamed ? AppColors.textSecondary : AppColors.textPrimary,
-                          fontWeight: isUnnamed ? FontWeight.normal : FontWeight.bold,
-                          fontStyle: isUnnamed ? FontStyle.italic : FontStyle.normal,
+                          color: isUnnamed
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                          fontWeight: isUnnamed
+                              ? FontWeight.normal
+                              : FontWeight.bold,
+                          fontStyle: isUnnamed
+                              ? FontStyle.italic
+                              : FontStyle.normal,
                           fontSize: 13,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -1079,7 +1302,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     if (device.isTripperCandidate) ...[
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primaryGold.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(6),
@@ -1102,7 +1328,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     Flexible(
                       child: Text(
                         'ID: $effectiveId',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1112,11 +1341,19 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                       style: TextStyle(color: Colors.white24, fontSize: 11),
                     ),
                     const SizedBox(width: 6),
-                    Icon(Icons.signal_cellular_alt_rounded, size: 12, color: rssiColor),
+                    Icon(
+                      Icons.signal_cellular_alt_rounded,
+                      size: 12,
+                      color: rssiColor,
+                    ),
                     const SizedBox(width: 3),
                     Text(
                       '${device.rssi} dBm',
-                      style: TextStyle(color: rssiColor, fontSize: 11, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: rssiColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -1154,35 +1391,56 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ),
             )
           else if (isThisConnecting)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primaryGold.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.primaryGold),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 10,
-                    height: 10,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: AppColors.primaryGold,
-                    ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
                   ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Conectando...',
-                    style: TextStyle(
-                      color: AppColors.primaryGold,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryGold.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primaryGold),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: AppColors.primaryGold,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _getPhaseLabel(
+                          widget.bleService.currentConnectionPhase,
+                        ),
+                        style: const TextStyle(
+                          color: AppColors.primaryGold,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: 'Cancelar conexión',
+                  icon: const Icon(
+                    Icons.cancel_outlined,
+                    color: Colors.redAccent,
+                    size: 20,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => widget.bleService.cancelPendingConnection(),
+                ),
+              ],
             )
           else
             ElevatedButton(
@@ -1194,10 +1452,17 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     ? AppColors.backgroundBlack
                     : AppColors.textPrimary,
                 minimumSize: const Size(0, 36),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
               ),
-              onPressed: () => widget.bleService.connect(device),
+              onPressed: widget.bleService.isConnecting
+                  ? null
+                  : () => widget.bleService.connect(device),
               child: const Text('Conectar', style: TextStyle(fontSize: 12)),
             ),
         ],
@@ -1206,7 +1471,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   }
 
   Widget _buildGattServicesSection() {
-    final bool isConnected = _connectionState == TripperConnectionState.connected;
+    final bool isConnected =
+        _connectionState == TripperConnectionState.connected;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1220,7 +1486,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_tree_outlined, color: AppColors.secondaryCyan, size: 18),
+              const Icon(
+                Icons.account_tree_outlined,
+                color: AppColors.secondaryCyan,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'Servicios y Características GATT',
@@ -1232,10 +1502,14 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ),
               const Spacer(),
               Text(
-                isConnected ? '${_gattServices.length} servicios' : 'Sin enlace',
+                isConnected
+                    ? '${_gattServices.length} servicios'
+                    : 'Sin enlace',
                 style: TextStyle(
                   fontSize: 11,
-                  color: isConnected ? Colors.greenAccent : AppColors.textSecondary,
+                  color: isConnected
+                      ? Colors.greenAccent
+                      : AppColors.textSecondary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1251,7 +1525,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ),
               child: const Text(
                 'Conecta un dispositivo BLE para inspeccionar su árbol de servicios, UUIDs y permisos.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5),
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11.5,
+                ),
               ),
             )
           else if (_gattServices.isEmpty)
@@ -1324,7 +1601,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.record_voice_over_rounded, color: AppColors.secondaryCyan, size: 18),
+              const Icon(
+                Icons.record_voice_over_rounded,
+                color: AppColors.secondaryCyan,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'Motor de Voz TTS (Indicaciones de Casco)',
@@ -1357,7 +1638,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           Text(
             vs?.statusMessage ??
                 'Permite verificar que el sintetizador pronuncie español correctamente antes de salir a carretera.',
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5, height: 1.3),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11.5,
+              height: 1.3,
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -1366,16 +1651,26 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.secondaryCyan,
                   foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                 ),
                 icon: Icon(
-                  _isTestingVoice ? Icons.hourglass_top_rounded : Icons.volume_up_rounded,
+                  _isTestingVoice
+                      ? Icons.hourglass_top_rounded
+                      : Icons.volume_up_rounded,
                   size: 16,
                 ),
                 label: Text(
                   _isTestingVoice ? 'Probando...' : 'Probar voz',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onPressed: _isTestingVoice ? null : _handleTestVoice,
               ),
@@ -1383,14 +1678,22 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 const SizedBox(width: 10),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: vs.isMuted ? Colors.white70 : AppColors.secondaryCyan,
+                    foregroundColor: vs.isMuted
+                        ? Colors.white70
+                        : AppColors.secondaryCyan,
                     side: BorderSide(
-                      color: vs.isMuted ? Colors.white24 : AppColors.secondaryCyan,
+                      color: vs.isMuted
+                          ? Colors.white24
+                          : AppColors.secondaryCyan,
                     ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   icon: Icon(
-                    vs.isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                    vs.isMuted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
                     size: 16,
                   ),
                   label: Text(
@@ -1410,7 +1713,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             const SizedBox(height: 8),
             Text(
               _voiceTestResult!,
-              style: const TextStyle(fontSize: 11, color: AppColors.primaryGold),
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.primaryGold,
+              ),
             ),
           ],
         ],
@@ -1449,7 +1755,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   }
 
   Widget _buildProtocolStagesSection() {
-    final bool isConnected = _connectionState == TripperConnectionState.connected;
+    final bool isConnected =
+        _connectionState == TripperConnectionState.connected;
     final bool hasCandidates = _devices.any((d) => d.isTripperCandidate);
 
     return Container(
@@ -1464,7 +1771,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.checklist_rounded, color: AppColors.secondaryCyan, size: 18),
+              Icon(
+                Icons.checklist_rounded,
+                color: AppColors.secondaryCyan,
+                size: 18,
+              ),
               SizedBox(width: 8),
               Text(
                 'Fases de Validación — Royal Enfield Tripper',
@@ -1480,15 +1791,19 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           _buildStageRow(
             stageNum: '1',
             title: 'Detección BLE',
-            description: 'Escaneo pasivo/activo de balizas y filtrado de candidatos.',
-            status: hasCandidates ? 'DETECTADO' : (_devices.isNotEmpty ? 'DISPOSITIVOS' : 'PENDIENTE'),
+            description:
+                'Escaneo pasivo/activo de balizas y filtrado de candidatos.',
+            status: hasCandidates
+                ? 'DETECTADO'
+                : (_devices.isNotEmpty ? 'DISPOSITIVOS' : 'PENDIENTE'),
             isSuccess: _devices.isNotEmpty,
           ),
           const Divider(color: Colors.white12, height: 16),
           _buildStageRow(
             stageNum: '2',
             title: 'Conexión GATT',
-            description: 'Establecimiento del enlace y lectura de servicios/características.',
+            description:
+                'Establecimiento del enlace y lectura de servicios/características.',
             status: isConnected ? 'ENLAZADO' : 'PENDIENTE',
             isSuccess: isConnected,
           ),
@@ -1496,7 +1811,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           _buildStageRow(
             stageNum: '3',
             title: 'Emparejamiento / Bonding PIN',
-            description: 'Vinculación a nivel de sistema operativo Android con código numérico.',
+            description:
+                'Vinculación a nivel de sistema operativo Android con código numérico.',
             status: 'GESTIONADO POR ANDROID',
             isSuccess: isConnected,
           ),
@@ -1504,7 +1820,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
           _buildStageRow(
             stageNum: '4',
             title: 'Protocolo de Pantalla Tripper',
-            description: 'Envío seguro de maniobras. Requiere protocolo certificado de RE.',
+            description:
+                'Envío seguro de maniobras. Requiere protocolo certificado de RE.',
             status: 'MODO SEGURO ACTIVO',
             isSuccess: false,
             highlightColor: AppColors.primaryGold,
@@ -1520,12 +1837,20 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.shield_outlined, color: AppColors.primaryGold, size: 18),
+                Icon(
+                  Icons.shield_outlined,
+                  color: AppColors.primaryGold,
+                  size: 18,
+                ),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'REstelar opera en modo de diagnóstico seguro no destructivo. No emite tramas de bytes especulativas ni altera la ECU o el velocímetro de la motocicleta.',
-                    style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.3),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      height: 1.3,
+                    ),
                   ),
                 ),
               ],
@@ -1586,16 +1911,25 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                   ),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: (highlightColor ?? (isSuccess ? Colors.greenAccent : Colors.white24))
-                          .withValues(alpha: 0.15),
+                      color:
+                          (highlightColor ??
+                                  (isSuccess
+                                      ? Colors.greenAccent
+                                      : Colors.white24))
+                              .withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       status,
                       style: TextStyle(
-                        color: highlightColor ?? (isSuccess ? Colors.greenAccent : Colors.white60),
+                        color:
+                            highlightColor ??
+                            (isSuccess ? Colors.greenAccent : Colors.white60),
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
@@ -1606,7 +1940,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               const SizedBox(height: 2),
               Text(
                 description,
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                ),
               ),
             ],
           ),
@@ -1628,7 +1965,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.terminal_rounded, color: AppColors.primaryGold, size: 18),
+              const Icon(
+                Icons.terminal_rounded,
+                color: AppColors.primaryGold,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'Consola de Diagnóstico en Vivo',
@@ -1640,8 +1981,18 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ),
               const Spacer(),
               TextButton.icon(
-                icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: AppColors.textSecondary),
-                label: const Text('Limpiar', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                icon: const Icon(
+                  Icons.delete_sweep_outlined,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+                label: const Text(
+                  'Limpiar',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
                 onPressed: () => widget.bleService.clearDiagnosticLogs(),
               ),
             ],
@@ -1659,7 +2010,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             child: _logs.isEmpty
                 ? const Text(
                     'Esperando eventos de navegación y Bluetooth...',
-                    style: TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace'),
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
                   )
                 : ListView.builder(
                     controller: _logScrollController,
@@ -1667,11 +2022,14 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     itemBuilder: (context, i) {
                       final log = _logs[i];
                       Color logColor = Colors.white70;
-                      if (log.contains('CANDIDATO') || log.contains('VALIDADA')) {
+                      if (log.contains('CANDIDATO') ||
+                          log.contains('VALIDADA')) {
                         logColor = AppColors.primaryGold;
-                      } else if (log.contains('Error') || log.contains('desactivado')) {
+                      } else if (log.contains('Error') ||
+                          log.contains('desactivado')) {
                         logColor = Colors.redAccent;
-                      } else if (log.contains('MANIOBRA') || log.contains('UUID')) {
+                      } else if (log.contains('MANIOBRA') ||
+                          log.contains('UUID')) {
                         logColor = AppColors.secondaryCyan;
                       }
                       return Text(
@@ -1693,10 +2051,15 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textPrimary,
                 side: const BorderSide(color: Colors.white24),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Copiar diagnóstico completo al portapapeles', style: TextStyle(fontSize: 12)),
+              label: const Text(
+                'Copiar diagnóstico completo al portapapeles',
+                style: TextStyle(fontSize: 12),
+              ),
               onPressed: _copyLogsToClipboard,
             ),
           ),
@@ -1726,7 +2089,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 const SizedBox(width: 4),
                 Text(
                   label,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 10,
+                  ),
                 ),
               ],
             ),

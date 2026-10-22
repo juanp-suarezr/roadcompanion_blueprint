@@ -10,6 +10,7 @@ import '../../../features/navigation/domain/services/voice_navigation_service.da
 import '../../../features/navigation/infrastructure/services/flutter_blue_plus_tripper_service.dart';
 import '../../../features/navigation/infrastructure/services/flutter_tts_voice_navigation_service.dart';
 import '../../../features/navigation/presentation/screens/tripper_diagnostic_screen.dart';
+import '../../bridge/presentation/screens/bridge_diagnostic_screen.dart';
 
 /// Pantalla de Ajustes de Road Companion.
 ///
@@ -294,7 +295,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24.0),
 
             // --- SECCIÓN: VOZ Y AUDIO DE NAVEGACIÓN ---
-            _buildSectionHeader('VOZ Y NAVEGACIÓN', Icons.record_voice_over_outlined),
+            _buildSectionHeader(
+              'VOZ Y NAVEGACIÓN',
+              Icons.record_voice_over_outlined,
+            ),
             const SizedBox(height: 10.0),
             Card(
               child: Padding(
@@ -337,16 +341,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(0, 44),
-                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0,
+                                vertical: 10.0,
+                              ),
                             ),
-                            onPressed: _isTestingVoice ? null : _handleTestVoice,
+                            onPressed: _isTestingVoice
+                                ? null
+                                : _handleTestVoice,
                             icon: Icon(
                               _isTestingVoice
                                   ? Icons.hourglass_top_rounded
                                   : Icons.volume_up_rounded,
                               size: 18.0,
                             ),
-                            label: Text(_isTestingVoice ? 'Emitiendo...' : 'Probar voz'),
+                            label: Text(
+                              _isTestingVoice ? 'Emitiendo...' : 'Probar voz',
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10.0),
@@ -354,7 +365,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size(0, 44),
-                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0,
+                                vertical: 10.0,
+                              ),
                             ),
                             onPressed: () {
                               setState(() {
@@ -367,7 +381,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   : Icons.volume_up_rounded,
                               size: 18.0,
                             ),
-                            label: Text(_voiceService.isMuted ? 'Desilenciar' : 'Silenciar'),
+                            label: Text(
+                              _voiceService.isMuted
+                                  ? 'Desilenciar'
+                                  : 'Silenciar',
+                            ),
                           ),
                         ),
                       ],
@@ -463,8 +481,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           backgroundColor: isDark
                               ? AppColors.cyanLuminous
                               : AppColors.surfaceNavy,
-                          foregroundColor:
-                              isDark ? AppColors.nightBlue : Colors.white,
+                          foregroundColor: isDark
+                              ? AppColors.nightBlue
+                              : Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -483,6 +502,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               bleService: FlutterBluePlusTripperService(),
                               voiceService: _voiceService,
                             ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10.0),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.cyanLuminous,
+                          side: const BorderSide(color: AppColors.cyanLuminous),
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.0),
+                          ),
+                        ),
+                        icon: const Icon(Icons.alt_route_rounded, size: 18.0),
+                        label: const Text(
+                          'ESTELA Bridge / Diagnóstico Maps & Waze',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const BridgeDiagnosticScreen(),
                           ),
                         ),
                       ),
@@ -677,4 +720,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 }
-

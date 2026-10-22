@@ -23,16 +23,19 @@ class _FakeLocationService implements LocationService {
   Future<bool> isLocationServiceEnabled() async => true;
 
   @override
-  Future<LocationPermissionResult> checkPermission() async => LocationPermissionResult.granted;
+  Future<LocationPermissionResult> checkPermission() async =>
+      LocationPermissionResult.granted;
 
   @override
-  Future<LocationPermissionResult> requestPermission() async => LocationPermissionResult.granted;
+  Future<LocationPermissionResult> requestPermission() async =>
+      LocationPermissionResult.granted;
 
   @override
   Future<bool> checkBackgroundPermission() async => true;
 
   @override
-  Future<LocationPermissionResult> requestBackgroundPermission() async => LocationPermissionResult.granted;
+  Future<LocationPermissionResult> requestBackgroundPermission() async =>
+      LocationPermissionResult.granted;
 
   @override
   Stream<GpsPosition> getPositionStream({
@@ -42,6 +45,11 @@ class _FakeLocationService implements LocationService {
     String? notificationTitle,
     String? notificationText,
   }) => _controller.stream;
+
+  @override
+  Future<GpsPosition?> getCurrentPosition({
+    Duration timeLimit = const Duration(seconds: 8),
+  }) async => null;
 
   void emitPosition(GpsPosition pos) => _controller.add(pos);
 
@@ -61,13 +69,11 @@ void main() {
       testRoute = ImportedGpxRoute(
         name: 'Ruta 5km Pereira - Dosquebradas',
         segments: [
-          GpxSegment(
-            [
-              GpxPoint(coordinates: Coordinates(4.8133, -75.6961)),
-              GpxPoint(coordinates: Coordinates(4.8200, -75.6900)),
-              GpxPoint(coordinates: Coordinates(4.8300, -75.6800)),
-            ],
-          ),
+          GpxSegment([
+            GpxPoint(coordinates: Coordinates(4.8133, -75.6961)),
+            GpxPoint(coordinates: Coordinates(4.8200, -75.6900)),
+            GpxPoint(coordinates: Coordinates(4.8300, -75.6800)),
+          ]),
         ],
       );
 
@@ -84,7 +90,9 @@ void main() {
       mapController.dispose();
     });
 
-    testWidgets('ActiveTurnByTurnHud se adapta a pantalla Samsung A35 sin solapamientos', (tester) async {
+    testWidgets('ActiveTurnByTurnHud se adapta a pantalla Samsung A35 sin solapamientos', (
+      tester,
+    ) async {
       // Dimensiones de pantalla Samsung Galaxy A35: 1080 x 2340 píxeles físicos (~411.4 x 891.4 dp)
       tester.view.physicalSize = const Size(1080, 2340);
       tester.view.devicePixelRatio = 1.0;
@@ -138,7 +146,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // 1. Verificar presencia de la maniobra superior
-      expect(find.text('Gire a la derecha hacia Av. Simón Bolívar'), findsOneWidget);
+      expect(
+        find.text('Gire a la derecha hacia Av. Simón Bolívar'),
+        findsOneWidget,
+      );
       expect(find.textContaining('350 m'), findsOneWidget);
 
       // 2. Verificar telemetría inferior (velocímetro, distancia restante, progreso)
@@ -151,7 +162,8 @@ void main() {
       final recenterFinder = find.byTooltip('Centrar en mi ubicación');
       expect(recenterFinder, findsOneWidget);
       final recenterBottomOffset = tester.getBottomLeft(recenterFinder).dy;
-      final screenHeight = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      final screenHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
       final distanceFromScreenBottom = screenHeight - recenterBottomOffset;
 
       // El botón debe estar a más de 200 dp del fondo para no ser tapado por el panel
@@ -184,55 +196,58 @@ void main() {
       expect(voiceMuteToggled, isTrue);
     });
 
-    testWidgets('ActiveTurnByTurnHud muestra chip BUSCANDO GPS sin fix y GPS REAL tras recibir señal', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2340);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+    testWidgets(
+      'ActiveTurnByTurnHud muestra chip BUSCANDO GPS sin fix y GPS REAL tras recibir señal',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2340);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: tracker,
-              builder: (context, _) => ActiveTurnByTurnHud(
-                tracker: tracker,
-                onPause: () {},
-                onResume: () {},
-                onStop: () {},
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Scaffold(
+              body: ListenableBuilder(
+                listenable: tracker,
+                builder: (context, _) => ActiveTurnByTurnHud(
+                  tracker: tracker,
+                  onPause: () {},
+                  onResume: () {},
+                  onStop: () {},
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.pumpAndSettle();
+        await tester.pumpAndSettle();
 
-      // Sin fix inicial
-      expect(find.text('BUSCANDO GPS'), findsOneWidget);
+        // Sin fix inicial
+        expect(find.text('BUSCANDO GPS'), findsOneWidget);
 
-      // Iniciar tracker y emitir posición válida
-      await tracker.startTracking();
-      locationService.emitPosition(
-        GpsPosition(
-          coordinates: Coordinates(4.8133, -75.6961),
-          accuracyMeters: 4.2,
-          speedMps: 12.5,
-          timestamp: DateTime.now(),
-        ),
-      );
-      await tester.pumpAndSettle();
+        // Iniciar tracker y emitir posición válida
+        await tracker.startTracking();
+        locationService.emitPosition(
+          GpsPosition(
+            coordinates: Coordinates(4.8133, -75.6961),
+            accuracyMeters: 4.2,
+            speedMps: 12.5,
+            timestamp: DateTime.now(),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // Debe mostrar origen de datos GPS REAL con precisión
-      expect(find.text('GPS REAL'), findsOneWidget);
-      expect(find.textContaining('±4m'), findsOneWidget);
+        // Debe mostrar origen de datos GPS REAL con precisión
+        expect(find.text('GPS REAL'), findsOneWidget);
+        expect(find.textContaining('±4m'), findsOneWidget);
 
-      // Detener tracking para cancelar timers activos del tracker
-      await tracker.stopTracking();
-      await tester.pumpAndSettle();
-    });
+        // Detener tracking para cancelar timers activos del tracker
+        await tracker.stopTracking();
+        await tester.pumpAndSettle();
+      },
+    );
   });
 }

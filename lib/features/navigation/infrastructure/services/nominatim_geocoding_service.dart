@@ -29,9 +29,9 @@ class NominatimGeocodingService implements GeocodingService {
     String userAgent =
         'REstelarNavigationApp/1.0 (contact: restelar@roadcompanion.app)',
     OsmPoiService? osmPoiService,
-  })  : _client = client ?? http.Client(),
-        _userAgent = userAgent,
-        _osmPoiService = osmPoiService ?? OsmPoiService(client: client);
+  }) : _client = client ?? http.Client(),
+       _userAgent = userAgent,
+       _osmPoiService = osmPoiService ?? OsmPoiService(client: client);
 
   OsmPoiService get osmPoiService => _osmPoiService;
 
@@ -56,7 +56,8 @@ class NominatimGeocodingService implements GeocodingService {
 
     // Si la consulta no especifica un país externo explícito, contextualizar prioritariamente en Colombia
     final lower = cleanQuery.toLowerCase();
-    final hasExplicitCountry = lower.contains('ecuador') ||
+    final hasExplicitCountry =
+        lower.contains('ecuador') ||
         lower.contains('venezuela') ||
         lower.contains('peru') ||
         lower.contains('perú') ||
@@ -158,9 +159,11 @@ class NominatimGeocodingService implements GeocodingService {
           for (final dest in overpassPois) {
             final distanceMeters = center.distanceTo(dest.coordinates);
             if (distanceMeters <= maxAllowedMeters && seenIds.add(dest.id)) {
-              final isDuplicate = accumulatedResults.any((existing) =>
-                  existing.title.toLowerCase() == dest.title.toLowerCase() &&
-                  existing.coordinates.distanceTo(dest.coordinates) < 25.0);
+              final isDuplicate = accumulatedResults.any(
+                (existing) =>
+                    existing.title.toLowerCase() == dest.title.toLowerCase() &&
+                    existing.coordinates.distanceTo(dest.coordinates) < 25.0,
+              );
               if (!isDuplicate) {
                 accumulatedResults.add(dest);
               }
@@ -200,7 +203,8 @@ class NominatimGeocodingService implements GeocodingService {
         normalizedQuery: cleanCategory,
         isCategory: true,
         userLocation: center,
-        provider: 'Nominatim Nearby Category (radio paso ${step + 1}: ~${(delta * 111).round()} km)',
+        provider:
+            'Nominatim Nearby Category (radio paso ${step + 1}: ~${(delta * 111).round()} km)',
         parameters: queryParams,
       );
 
@@ -236,9 +240,11 @@ class NominatimGeocodingService implements GeocodingService {
 
           if (seenIds.add(dest.id)) {
             // Comprobar además duplicados por proximidad (< 25 m) y mismo nombre
-            final isDuplicateSpatial = accumulatedResults.any((existing) =>
-                existing.title.toLowerCase() == dest.title.toLowerCase() &&
-                existing.coordinates.distanceTo(dest.coordinates) < 25.0);
+            final isDuplicateSpatial = accumulatedResults.any(
+              (existing) =>
+                  existing.title.toLowerCase() == dest.title.toLowerCase() &&
+                  existing.coordinates.distanceTo(dest.coordinates) < 25.0,
+            );
 
             if (!isDuplicateSpatial) {
               accumulatedResults.add(dest);
@@ -247,7 +253,8 @@ class NominatimGeocodingService implements GeocodingService {
         }
 
         // Si ya obtuvimos al menos 3 resultados relevantes, no es necesario expandir más
-        if (accumulatedResults.length >= 3 || step == progressiveDeltas.length - 1) {
+        if (accumulatedResults.length >= 3 ||
+            step == progressiveDeltas.length - 1) {
           break;
         }
       } on TimeoutException {
@@ -275,7 +282,10 @@ class NominatimGeocodingService implements GeocodingService {
     return accumulatedResults.take(limit).toList();
   }
 
-  void _applyCategoryFilter(Map<String, String> queryParams, String cleanCategory) {
+  void _applyCategoryFilter(
+    Map<String, String> queryParams,
+    String cleanCategory,
+  ) {
     if (cleanCategory == 'fuel' ||
         cleanCategory.contains('gasolin') ||
         cleanCategory.contains('combustible') ||
@@ -371,17 +381,29 @@ class NominatimGeocodingService implements GeocodingService {
         final road = address?['road'] as String?;
         final type = item['type'] as String? ?? '';
         if (type == 'fuel') {
-          title = road != null ? 'Estación de Servicio ($road)' : 'Estación de Servicio';
+          title = road != null
+              ? 'Estación de Servicio ($road)'
+              : 'Estación de Servicio';
         } else if (type == 'place_of_worship') {
-          title = road != null ? 'Lugar de Culto ($road)' : 'Iglesia / Lugar de Culto';
+          title = road != null
+              ? 'Lugar de Culto ($road)'
+              : 'Iglesia / Lugar de Culto';
         } else if (type == 'mall') {
-          title = road != null ? 'Centro Comercial ($road)' : 'Centro Comercial';
+          title = road != null
+              ? 'Centro Comercial ($road)'
+              : 'Centro Comercial';
         } else if (type == 'motorcycle' || type == 'car_repair') {
-          title = road != null ? 'Taller de Motocicletas ($road)' : 'Taller de Motocicletas';
+          title = road != null
+              ? 'Taller de Motocicletas ($road)'
+              : 'Taller de Motocicletas';
         } else if (type == 'tyres') {
-          title = road != null ? 'Montallantas ($road)' : 'Montallantas / Vulcanizadora';
+          title = road != null
+              ? 'Montallantas ($road)'
+              : 'Montallantas / Vulcanizadora';
         } else if (type == 'hairdresser') {
-          title = road != null ? 'Peluquería / Barbería ($road)' : 'Peluquería / Barbería';
+          title = road != null
+              ? 'Peluquería / Barbería ($road)'
+              : 'Peluquería / Barbería';
         } else {
           title = displayName.split(',').first.trim();
         }
@@ -389,7 +411,8 @@ class NominatimGeocodingService implements GeocodingService {
 
       final subtitle = _buildSubtitle(item, displayName);
 
-      final id = item['place_id']?.toString() ??
+      final id =
+          item['place_id']?.toString() ??
           '${lat.toStringAsFixed(5)}_${lon.toStringAsFixed(5)}';
 
       results.add(
@@ -456,12 +479,14 @@ class NominatimGeocodingService implements GeocodingService {
     if (address != null) {
       final road =
           address['road'] ?? address['pedestrian'] ?? address['street'];
-      final neighbourhood = address['suburb'] ??
+      final neighbourhood =
+          address['suburb'] ??
           address['neighbourhood'] ??
           address['quarter'] ??
           address['hamlet'] ??
           address['village'];
-      final locality = address['city'] ??
+      final locality =
+          address['city'] ??
           address['town'] ??
           address['municipality'] ??
           address['county'];

@@ -46,6 +46,11 @@ class MockLocationService implements LocationService {
     String? notificationText,
   }) => _controller.stream;
 
+  @override
+  Future<GpsPosition?> getCurrentPosition({
+    Duration timeLimit = const Duration(seconds: 8),
+  }) async => null;
+
   void dispose() => _controller.close();
 }
 

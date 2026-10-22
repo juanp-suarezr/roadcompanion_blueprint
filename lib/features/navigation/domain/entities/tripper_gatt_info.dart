@@ -32,8 +32,5 @@ class TripperGattService {
   final String uuid;
   final List<TripperGattCharacteristic> characteristics;
 
-  const TripperGattService({
-    required this.uuid,
-    required this.characteristics,
-  });
+  const TripperGattService({required this.uuid, required this.characteristics});
 }

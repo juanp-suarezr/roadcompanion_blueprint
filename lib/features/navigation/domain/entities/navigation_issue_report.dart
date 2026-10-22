@@ -98,18 +98,18 @@ class NavigationIssueReport {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'location': {
-          'latitude': location.latitude,
-          'longitude': location.longitude,
-        },
-        'type': type.name,
-        'roadSegment': roadSegment,
-        'description': description,
-        'reportedAt': reportedAt.toIso8601String(),
-        'source': source,
-        'status': status.name,
-      };
+    'id': id,
+    'location': {
+      'latitude': location.latitude,
+      'longitude': location.longitude,
+    },
+    'type': type.name,
+    'roadSegment': roadSegment,
+    'description': description,
+    'reportedAt': reportedAt.toIso8601String(),
+    'source': source,
+    'status': status.name,
+  };
 
   factory NavigationIssueReport.fromJson(Map<String, dynamic> json) {
     final locMap = json['location'] as Map<String, dynamic>;
@@ -137,7 +137,8 @@ class NavigationIssueReport {
       type: parseType(json['type'] as String?),
       roadSegment: json['roadSegment'] as String?,
       description: json['description'] as String? ?? '',
-      reportedAt: DateTime.tryParse(json['reportedAt'] as String? ?? '') ??
+      reportedAt:
+          DateTime.tryParse(json['reportedAt'] as String? ?? '') ??
           DateTime.now(),
       source: json['source'] as String? ?? 'Reporte del motociclista',
       status: parseStatus(json['status'] as String?),

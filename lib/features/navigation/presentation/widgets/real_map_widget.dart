@@ -27,6 +27,7 @@ class RealMapWidget extends StatelessWidget {
   final MapTileProvider tileProvider;
   final String? cartoApiKey;
   final double controlsBottomOffset;
+  final List<Marker>? additionalMarkers;
 
   const RealMapWidget({
     super.key,
@@ -46,6 +47,7 @@ class RealMapWidget extends StatelessWidget {
     this.tileProvider = MapTileProvider.auto,
     this.cartoApiKey,
     this.controlsBottomOffset = 120.0,
+    this.additionalMarkers,
   });
 
   @override
@@ -115,6 +117,11 @@ class RealMapWidget extends StatelessWidget {
       );
     }
 
+    // 3. Marcadores adicionales (POIs, paradas intermedias, origen)
+    if (additionalMarkers != null && additionalMarkers!.isNotEmpty) {
+      markers.addAll(additionalMarkers!);
+    }
+
     final tileConfig = RealMapTileConfig(
       provider: tileProvider,
       customCartoApiKey: cartoApiKey,
@@ -139,7 +146,9 @@ class RealMapWidget extends StatelessWidget {
               Text(
                 'Clave de CARTO requerida',
                 style: AppTypography.sectionTitle.copyWith(
-                  color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+                  color: isDark
+                      ? AppColors.coldWhite
+                      : AppColors.primaryTextLight,
                 ),
               ),
               const SizedBox(height: 10.0),

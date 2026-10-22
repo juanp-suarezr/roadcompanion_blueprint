@@ -105,9 +105,11 @@ class SmartNavigationMemoryService {
   /// Agrega un nuevo reporte de navegación a la memoria local.
   Future<void> addReport(NavigationIssueReport report) async {
     // Evitar reportes idénticos duplicados en el mismo sector (< 25 m y mismo tipo)
-    _inMemoryReports.removeWhere((existing) =>
-        existing.type == report.type &&
-        existing.location.distanceTo(report.location) < 25.0);
+    _inMemoryReports.removeWhere(
+      (existing) =>
+          existing.type == report.type &&
+          existing.location.distanceTo(report.location) < 25.0,
+    );
 
     _inMemoryReports.add(report);
     await _persistReports();
@@ -120,7 +122,9 @@ class SmartNavigationMemoryService {
   ) async {
     final index = _inMemoryReports.indexWhere((r) => r.id == id);
     if (index != -1) {
-      _inMemoryReports[index] = _inMemoryReports[index].copyWith(status: newStatus);
+      _inMemoryReports[index] = _inMemoryReports[index].copyWith(
+        status: newStatus,
+      );
       await _persistReports();
     }
   }

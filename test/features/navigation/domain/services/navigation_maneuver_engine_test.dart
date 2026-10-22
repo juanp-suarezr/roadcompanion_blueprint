@@ -65,34 +65,40 @@ void main() {
       );
     });
 
-    test('Al inicio de la ruta, resuelve el primer paso con su distancia real', () {
-      engine.setRoute(testRoute);
+    test(
+      'Al inicio de la ruta, resuelve el primer paso con su distancia real',
+      () {
+        engine.setRoute(testRoute);
 
-      // Posición del rider al inicio (a ~100m del origen)
-      final step = engine.resolveStep(
-        currentCoordinates: Coordinates(4.8009, -75.6900),
-      );
+        // Posición del rider al inicio (a ~100m del origen)
+        final step = engine.resolveStep(
+          currentCoordinates: Coordinates(4.8009, -75.6900),
+        );
 
-      expect(step, isNotNull);
-      // Tras iniciar, la maniobra a la que se aproxima es el giro en Calle 20
-      expect(step!.activeManeuver.type, equals(ManeuverType.left));
-      expect(step.distanceToManeuverMeters, closeTo(455.0, 30.0));
-    });
+        expect(step, isNotNull);
+        // Tras iniciar, la maniobra a la que se aproxima es el giro en Calle 20
+        expect(step!.activeManeuver.type, equals(ManeuverType.left));
+        expect(step.distanceToManeuverMeters, closeTo(455.0, 30.0));
+      },
+    );
 
-    test('Al avanzar cerca del giro en Calle 20, calcula distancia métrica decreciente', () {
-      engine.setRoute(testRoute);
+    test(
+      'Al avanzar cerca del giro en Calle 20, calcula distancia métrica decreciente',
+      () {
+        engine.setRoute(testRoute);
 
-      // Posición a ~55m antes de Calle 20 (4.8045, -75.6900)
-      final step = engine.resolveStep(
-        currentCoordinates: Coordinates(4.8045, -75.6900),
-      );
+        // Posición a ~55m antes de Calle 20 (4.8045, -75.6900)
+        final step = engine.resolveStep(
+          currentCoordinates: Coordinates(4.8045, -75.6900),
+        );
 
-      expect(step, isNotNull);
-      expect(step!.activeManeuver.type, equals(ManeuverType.left));
-      expect(step.distanceToManeuverMeters, closeTo(55.0, 15.0));
-      expect(step.activeManeuver.roadName, equals('Calle 20'));
-      expect(step.nextManeuver?.type, equals(ManeuverType.right));
-    });
+        expect(step, isNotNull);
+        expect(step!.activeManeuver.type, equals(ManeuverType.left));
+        expect(step.distanceToManeuverMeters, closeTo(55.0, 15.0));
+        expect(step.activeManeuver.roadName, equals('Calle 20'));
+        expect(step.nextManeuver?.type, equals(ManeuverType.right));
+      },
+    );
 
     test('Al superar Calle 20, avanza automáticamente a Carrera 8', () {
       engine.setRoute(testRoute);
@@ -106,5 +112,22 @@ void main() {
       expect(step!.activeManeuver.type, equals(ManeuverType.right));
       expect(step.activeManeuver.roadName, equals('Carrera 8'));
     });
+
+    test(
+      'lastResolvedStep se actualiza con la última resolución y se limpia con clear()',
+      () {
+        engine.setRoute(testRoute);
+        expect(engine.lastResolvedStep, isNull);
+
+        final step = engine.resolveStep(
+          currentCoordinates: Coordinates(4.8009, -75.6900),
+        );
+        expect(engine.lastResolvedStep, equals(step));
+
+        engine.clear();
+        expect(engine.lastResolvedStep, isNull);
+        expect(engine.currentRoute, isNull);
+      },
+    );
   });
 }

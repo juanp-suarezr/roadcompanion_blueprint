@@ -46,7 +46,8 @@ class TripperDevice {
   }) {
     final trimmedName = name.trim();
     final cleanName = trimmedName.toUpperCase();
-    final bool hasNameMatch = cleanName.contains('ROYAL') ||
+    final bool hasNameMatch =
+        cleanName.contains('ROYAL') ||
         cleanName.contains('ENFIELD') ||
         cleanName.contains('TRIPPER') ||
         cleanName.contains('RE_') ||
@@ -82,12 +83,16 @@ class TripperDevice {
           ? 'Perfil serie detectado pero nombre ("$trimmedName") no asociado a Royal Enfield.'
           : 'Perfil serie detectado en dispositivo sin nombre anunciado.';
     } else if (cleanName.isEmpty) {
-      evidence = 'Periférico BLE transmitiendo paquetes publicitarios sin nombre.';
+      evidence =
+          'Periférico BLE transmitiendo paquetes publicitarios sin nombre.';
     } else {
-      evidence = 'Dispositivo BLE genérico sin identificadores de Royal Enfield.';
+      evidence =
+          'Dispositivo BLE genérico sin identificadores de Royal Enfield.';
     }
 
-    final effectiveName = trimmedName.isEmpty ? 'Dispositivo BLE sin nombre' : trimmedName;
+    final effectiveName = trimmedName.isEmpty
+        ? 'Dispositivo BLE sin nombre'
+        : trimmedName;
     final effectiveId = id.trim().isEmpty ? 'ID no disponible' : id.trim();
 
     return TripperDevice(

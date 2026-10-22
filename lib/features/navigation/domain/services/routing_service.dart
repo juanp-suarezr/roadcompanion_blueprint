@@ -20,4 +20,17 @@ abstract class RoutingService {
     required Coordinates origin,
     required Coordinates destination,
   });
+
+  /// Calcula la ruta óptima continua que conecta [origin] pasando secuencialmente
+  /// por los [waypoints] ordenados hasta alcanzar el [destination] final.
+  ///
+  /// Respeta el orden de las paradas intermedias y consolida la distancia total y maniobras.
+  Future<CalculatedRoute> calculateMultistopRoute({
+    required Coordinates origin,
+    required List<Coordinates> waypoints,
+    required Coordinates destination,
+  }) {
+    // Implementación por defecto para mantener total retrocompatibilidad con mocks existentes
+    return calculateRoute(origin: origin, destination: destination);
+  }
 }
