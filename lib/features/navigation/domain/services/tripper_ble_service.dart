@@ -1,5 +1,6 @@
 import '../entities/tripper_connection_state.dart';
 import '../entities/tripper_device.dart';
+import '../entities/tripper_gatt_info.dart';
 import '../entities/tripper_maneuver_payload.dart';
 
 /// Contrato abstracto para el servicio de comunicación Bluetooth Low Energy
@@ -19,6 +20,12 @@ abstract class TripperBleService {
 
   /// Lista actual de dispositivos descubiertos.
   List<TripperDevice> get discoveredDevices;
+
+  /// Flujo de servicios y características GATT descubiertos en el dispositivo conectado.
+  Stream<List<TripperGattService>> get discoveredGattServicesStream;
+
+  /// Lista actual de servicios GATT descubiertos.
+  List<TripperGattService> get discoveredGattServices;
 
   /// Flujo de líneas de registro de diagnóstico en tiempo real.
   Stream<String> get diagnosticLogStream;

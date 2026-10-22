@@ -57,7 +57,7 @@ abstract class AppTheme {
           backgroundColor: AppColors.surfaceNavy,
           foregroundColor: Colors.white,
           elevation: 0,
-          minimumSize: const Size(double.infinity, 52.0),
+          minimumSize: const Size(64.0, 52.0),
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 14.0),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.0),
@@ -72,7 +72,7 @@ abstract class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.surfaceNavy,
-          minimumSize: const Size(double.infinity, 50.0),
+          minimumSize: const Size(64.0, 50.0),
           side: const BorderSide(color: AppColors.electricBlue, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 14.0),
           shape: RoundedRectangleBorder(
@@ -167,7 +167,7 @@ abstract class AppTheme {
           backgroundColor: AppColors.cyanLuminous,
           foregroundColor: AppColors.nightBlue,
           elevation: 0,
-          minimumSize: const Size(double.infinity, 52.0),
+          minimumSize: const Size(64.0, 52.0),
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 14.0),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.0),
@@ -182,7 +182,7 @@ abstract class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.cyanLuminous,
-          minimumSize: const Size(double.infinity, 50.0),
+          minimumSize: const Size(64.0, 50.0),
           side: const BorderSide(color: AppColors.electricBlue, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 14.0),
           shape: RoundedRectangleBorder(

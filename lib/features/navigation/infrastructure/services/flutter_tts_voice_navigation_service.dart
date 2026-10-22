@@ -14,7 +14,11 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
   bool _isMuted = false;
   bool _isAvailable = false;
   bool _isSpeaking = false;
+  DateTime? _speakStartedAt;
   String _activeLanguage = 'es-ES';
+  VoiceServiceStatus _status = VoiceServiceStatus.uninitialized;
+  String? _statusMessage;
+  final _statusController = StreamController<VoiceServiceStatus>.broadcast();
 
   // Registro de etapas de anuncio emitidas: 'index_stage'
   final Set<String> _announcedStages = {};
@@ -30,6 +34,13 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
     _isMuted = value;
     if (_isMuted) {
       stop();
+      _setStatus(VoiceServiceStatus.muted, 'Audio silenciado por el usuario.');
+    } else {
+      if (_isAvailable) {
+        _setStatus(VoiceServiceStatus.ready, 'Voz lista en $_activeLanguage.');
+      } else {
+        _setStatus(VoiceServiceStatus.uninitialized, 'Pendiente de inicialización.');
+      }
     }
   }
 
@@ -42,63 +53,172 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
   bool get isAvailable => _isAvailable;
 
   @override
+  VoiceServiceStatus get status => _status;
+
+  @override
+  String? get statusMessage => _statusMessage;
+
+  @override
+  Stream<VoiceServiceStatus> get statusStream => _statusController.stream;
+
+  void _setStatus(VoiceServiceStatus newStatus, String? message) {
+    _status = newStatus;
+    _statusMessage = message;
+    if (!_statusController.isClosed) {
+      _statusController.add(newStatus);
+    }
+    debugPrint('[TTS] Estado: ${newStatus.name} - $message');
+  }
+
+  @override
   Future<void> init() async {
     try {
-      if (kIsWeb) return;
+      if (kIsWeb) {
+        _setStatus(
+          VoiceServiceStatus.error,
+          'TTS no disponible en plataforma web.',
+        );
+        return;
+      }
+
+      _setStatus(VoiceServiceStatus.initializing, 'Inicializando motor TTS...');
 
       // Configurar callbacks de ciclo de vida TTS
       _tts.setStartHandler(() {
         _isSpeaking = true;
+        _speakStartedAt = DateTime.now();
       });
       _tts.setCompletionHandler(() {
         _isSpeaking = false;
+        _speakStartedAt = null;
+      });
+      _tts.setCancelHandler(() {
+        _isSpeaking = false;
+        _speakStartedAt = null;
       });
       _tts.setErrorHandler((msg) {
         _isSpeaking = false;
-        debugPrint('Aviso TTS: $msg');
+        _speakStartedAt = null;
+        debugPrint('Aviso TTS de error de reproducción: $msg');
       });
 
-      // Configurar parámetros de voz para casco (claridad y ritmo)
-      await _tts.setSpeechRate(0.52);
+      // Configurar parámetros de voz para intercomunicador de casco
+      await _tts.setSpeechRate(0.50);
       await _tts.setVolume(1.0);
       await _tts.setPitch(1.0);
 
-      // Comprobar disponibilidad de idioma español
+      // Comprobar disponibilidad de idioma español (es-ES, es-419, es-US, es)
+      String chosenLanguage = 'es-ES';
+      bool languageFound = false;
+
       final dynamic languages = await _tts.getLanguages;
-      if (languages is List) {
-        final spanish = languages.cast<dynamic>().map((e) => e.toString()).firstWhere(
-              (l) => l.toLowerCase().startsWith('es'),
-              orElse: () => '',
-            );
-        if (spanish.isNotEmpty) {
-          _activeLanguage = spanish;
+      if (languages is List && languages.isNotEmpty) {
+        final list = languages.cast<dynamic>().map((e) => e.toString()).toList();
+        final candidate = list.firstWhere(
+          (l) =>
+              l.toLowerCase() == 'es-es' ||
+              l.toLowerCase() == 'es_es' ||
+              l.toLowerCase() == 'es-419' ||
+              l.toLowerCase() == 'es_419' ||
+              l.toLowerCase() == 'es-us' ||
+              l.toLowerCase().startsWith('es'),
+          orElse: () => '',
+        );
+        if (candidate.isNotEmpty) {
+          chosenLanguage = candidate;
+          languageFound = true;
         }
       }
 
-      await _tts.setLanguage(_activeLanguage);
+      // Si no se encontró en la lista dinámica, verificar con isLanguageAvailable
+      if (!languageFound) {
+        final dynamic isEsAvailable = await _tts.isLanguageAvailable('es-ES');
+        if (isEsAvailable == 1 || isEsAvailable == true) {
+          chosenLanguage = 'es-ES';
+          languageFound = true;
+        } else {
+          final dynamic isLatamAvailable =
+              await _tts.isLanguageAvailable('es-419');
+          if (isLatamAvailable == 1 || isLatamAvailable == true) {
+            chosenLanguage = 'es-419';
+            languageFound = true;
+          }
+        }
+      }
+
+      await _tts.setLanguage(chosenLanguage);
+      _activeLanguage = chosenLanguage;
       _isAvailable = true;
+
+      if (_isMuted) {
+        _setStatus(
+          VoiceServiceStatus.muted,
+          'Motor listo en $_activeLanguage (Silenciado).',
+        );
+      } else {
+        _setStatus(
+          VoiceServiceStatus.ready,
+          'Voz lista en $_activeLanguage para indicaciones viales.',
+        );
+      }
     } catch (e) {
       debugPrint('No se pudo inicializar FlutterTts: $e');
       _isAvailable = false;
+      _setStatus(
+        VoiceServiceStatus.error,
+        'Error inicializando voz: $e. Verifica que los Servicios de Voz de Google estén activos.',
+      );
     }
   }
 
   @override
+  Future<bool> testVoice({String? sampleText}) async {
+    if (!_isAvailable) {
+      await init();
+    }
+    if (!_isAvailable) {
+      return false;
+    }
+
+    final text = sampleText ?? 'REstelar: audio de navegación por voz listo.';
+    await speak(text, interrupt: true);
+    return true;
+  }
+
+  @override
   Future<void> speak(String text, {bool interrupt = false}) async {
-    if (_isMuted || !_isAvailable || text.trim().isEmpty) return;
+    if (_isMuted || text.trim().isEmpty) return;
+
+    if (!_isAvailable) {
+      await init();
+      if (!_isAvailable) return;
+    }
 
     try {
-      if (_isSpeaking && !interrupt) {
-        // Evitar superposición de anuncios secundarios
-        return;
+      // Mecanismo de seguridad contra audio atascado (watchdog)
+      if (_isSpeaking) {
+        final elapsed = _speakStartedAt != null
+            ? DateTime.now().difference(_speakStartedAt!)
+            : Duration.zero;
+        if (elapsed.inSeconds > 8) {
+          debugPrint('[TTS] Watchdog: Reiniciando estado de audio atascado.');
+          _isSpeaking = false;
+        } else if (!interrupt) {
+          // No encimar anuncios secundarios mientras otro se reproduce
+          return;
+        }
       }
 
       if (interrupt) {
-        await _tts.stop();
+        await stop();
       }
 
+      _isSpeaking = true;
+      _speakStartedAt = DateTime.now();
       await _tts.speak(text);
     } catch (e) {
+      _isSpeaking = false;
+      _speakStartedAt = null;
       debugPrint('Error al reproducir voz TTS: $e');
     }
   }
@@ -106,6 +226,7 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
   @override
   Future<void> stop() async {
     _isSpeaking = false;
+    _speakStartedAt = null;
     if (_isAvailable && _ttsInstance != null) {
       try {
         await _ttsInstance!.stop();
@@ -122,12 +243,12 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
   }) async {
     if (_isMuted) return;
 
-    // Adaptar umbrales a la velocidad de la motocicleta
+    // Adaptar umbrales continuos según la velocidad del motociclista
     final double advanceThreshold = currentSpeedKmh > 60.0 ? 600.0 : 450.0;
     final double prepThreshold = currentSpeedKmh > 60.0 ? 250.0 : 180.0;
     final double imminentThreshold = currentSpeedKmh > 60.0 ? 50.0 : 30.0;
 
-    // 1. Maniobra Inminente (30m - 50m)
+    // 1. Maniobra Inminente (<= 30m - 50m)
     if (distanceToManeuverMeters <= imminentThreshold && distanceToManeuverMeters >= 0.0) {
       final key = '${maneuverIndex}_imminent';
       if (!_announcedStages.contains(key)) {
@@ -138,9 +259,9 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
       return;
     }
 
-    // 2. Maniobra de Preparación (~180m - 250m)
+    // 2. Maniobra de Preparación (imminentThreshold < dist <= prepThreshold) — Sin huecos
     if (distanceToManeuverMeters <= prepThreshold &&
-        distanceToManeuverMeters > imminentThreshold + 20.0) {
+        distanceToManeuverMeters > imminentThreshold) {
       final key = '${maneuverIndex}_prep';
       if (!_announcedStages.contains(key)) {
         _announcedStages.add(key);
@@ -151,9 +272,9 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
       return;
     }
 
-    // 3. Maniobra de Anticipación (~450m - 600m)
+    // 3. Maniobra de Anticipación (prepThreshold < dist <= advanceThreshold) — Sin huecos
     if (distanceToManeuverMeters <= advanceThreshold &&
-        distanceToManeuverMeters > prepThreshold + 40.0) {
+        distanceToManeuverMeters > prepThreshold) {
       final key = '${maneuverIndex}_advance';
       if (!_announcedStages.contains(key)) {
         _announcedStages.add(key);
@@ -171,7 +292,7 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
     final now = DateTime.now();
     if (_lastOffRouteAnnouncedAt != null &&
         now.difference(_lastOffRouteAnnouncedAt!) < const Duration(seconds: 20)) {
-      return; // No saturar al piloto si está recalculando
+      return; // Evitar saturar al piloto en recalculo
     }
     _lastOffRouteAnnouncedAt = now;
     await speak('Has salido de la ruta. Recalculando trayecto.', interrupt: true);
@@ -193,6 +314,7 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
   @override
   void dispose() {
     stop();
+    _statusController.close();
   }
 
   String _buildDistanceInstruction(Maneuver maneuver, int meters) {
@@ -258,3 +380,4 @@ class FlutterTtsVoiceNavigationService implements VoiceNavigationService {
     return text;
   }
 }
+

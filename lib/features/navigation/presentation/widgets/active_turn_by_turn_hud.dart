@@ -38,18 +38,24 @@ class ActiveTurnByTurnHud extends StatelessWidget {
         // 1. Tarjeta Superior de Maniobra (Turn-by-turn banner)
         if (currentManeuver != null)
           Positioned(
-            top: 14.0,
-            left: 16.0,
-            right: 16.0,
-            child: _buildManeuverCard(isDark),
+            top: 10.0,
+            left: 12.0,
+            right: 12.0,
+            child: SafeArea(
+              bottom: false,
+              child: _buildManeuverCard(isDark),
+            ),
           ),
 
         // 2. Panel Inferior de Telemetría y Controles Flotantes
         Positioned(
-          bottom: 16.0,
-          left: 16.0,
-          right: 16.0,
-          child: _buildBottomTelemetry(context, isDark),
+          bottom: 12.0,
+          left: 12.0,
+          right: 12.0,
+          child: SafeArea(
+            top: false,
+            child: _buildBottomTelemetry(context, isDark),
+          ),
         ),
       ],
     );
@@ -59,40 +65,40 @@ class ActiveTurnByTurnHud extends StatelessWidget {
     final distanceText = _formatDistance(distanceToManeuverMeters);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
       decoration: BoxDecoration(
         color: (isDark ? AppColors.surfaceNavy : AppColors.whiteSurface)
-            .withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(16.0),
+            .withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(14.0),
         border: Border.all(
           color: isDark ? const Color(0xFF264660) : AppColors.silver,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 14.0,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 12.0,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Row(
         children: [
-          // Icono grande de maniobra
+          // Icono compacto de maniobra
           Container(
-            width: 52.0,
-            height: 52.0,
+            width: 44.0,
+            height: 44.0,
             decoration: BoxDecoration(
               color: isDark ? AppColors.nightBlue : const Color(0xFFE2EDF7),
-              borderRadius: BorderRadius.circular(12.0),
+              borderRadius: BorderRadius.circular(10.0),
             ),
             child: Icon(
               _getManeuverIcon(currentManeuver!.type),
-              size: 32.0,
+              size: 26.0,
               color: isDark ? AppColors.cyanLuminous : AppColors.surfaceNavy,
             ),
           ),
-          const SizedBox(width: 14.0),
+          const SizedBox(width: 12.0),
 
           // Distancia al giro e instrucción
           Expanded(
@@ -104,7 +110,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                   Text(
                     'En $distanceText',
                     style: TextStyle(
-                      fontSize: 16.0,
+                      fontSize: 15.0,
                       fontWeight: FontWeight.w900,
                       color: isDark
                           ? AppColors.cyanLuminous
@@ -114,7 +120,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                 Text(
                   currentManeuver!.instruction,
                   style: TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: isDark
                         ? AppColors.coldWhite
@@ -127,7 +133,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
             ),
           ),
           if (onToggleVoiceMute != null) ...[
-            const SizedBox(width: 8.0),
+            const SizedBox(width: 6.0),
             IconButton(
               tooltip: isVoiceMuted ? 'Activar voz' : 'Silenciar voz',
               icon: Icon(
@@ -139,7 +145,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                     : (isDark
                         ? AppColors.cyanLuminous
                         : AppColors.surfaceNavy),
-                size: 26.0,
+                size: 24.0,
               ),
               onPressed: onToggleVoiceMute,
             ),
@@ -150,20 +156,29 @@ class ActiveTurnByTurnHud extends StatelessWidget {
   }
 
   Widget _buildBottomTelemetry(BuildContext context, bool isDark) {
+    final pos = tracker.currentPosition;
+    final hasFix = pos != null;
+    final accuracy = pos?.accuracyMeters;
+    final accuracyStr =
+        accuracy != null ? '±${accuracy.toStringAsFixed(0)}m' : null;
+    final timeStr = pos != null
+        ? '${pos.timestamp.hour.toString().padLeft(2, '0')}:${pos.timestamp.minute.toString().padLeft(2, '0')}:${pos.timestamp.second.toString().padLeft(2, '0')}'
+        : null;
+
     return Container(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
       decoration: BoxDecoration(
         color: (isDark ? AppColors.nightBlue : AppColors.whiteSurface)
-            .withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(18.0),
+            .withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(16.0),
         border: Border.all(
           color: isDark ? const Color(0xFF264660) : AppColors.silver,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 16.0,
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 14.0,
             offset: const Offset(0, 4),
           ),
         ],
@@ -172,6 +187,85 @@ class ActiveTurnByTurnHud extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Barra de estado de fuente GPS / DEMO
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
+                decoration: BoxDecoration(
+                  color: hasFix
+                      ? AppColors.success.withValues(alpha: 0.15)
+                      : AppColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6.0),
+                  border: Border.all(
+                    color: hasFix
+                        ? AppColors.success.withValues(alpha: 0.4)
+                        : AppColors.warning.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      hasFix ? Icons.gps_fixed_rounded : Icons.gps_not_fixed_rounded,
+                      size: 11.0,
+                      color: hasFix ? AppColors.success : AppColors.warning,
+                    ),
+                    const SizedBox(width: 4.0),
+                    Text(
+                      hasFix ? 'GPS REAL' : 'BUSCANDO GPS',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: hasFix ? AppColors.success : AppColors.warning,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (accuracyStr != null) ...[
+                const SizedBox(width: 6.0),
+                Text(
+                  accuracyStr,
+                  style: TextStyle(
+                    fontSize: 10.0,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppColors.secondaryTextDark : AppColors.secondaryTextLight,
+                  ),
+                ),
+              ],
+              if (timeStr != null) ...[
+                const SizedBox(width: 6.0),
+                Text(
+                  '• $timeStr',
+                  style: TextStyle(
+                    fontSize: 10.0,
+                    color: isDark ? AppColors.secondaryTextDark : AppColors.secondaryTextLight,
+                  ),
+                ),
+              ],
+              const Spacer(),
+              if (tracker.isPaused)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4.0),
+                  ),
+                  child: const Text(
+                    'PAUSADO',
+                    style: TextStyle(
+                      fontSize: 9.0,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8.0),
+
           // Velocidad y Odometría
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -182,7 +276,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                     ? tracker.currentSpeedKmh!.toStringAsFixed(0)
                     : '--',
                 style: const TextStyle(
-                  fontSize: 38.0,
+                  fontSize: 34.0,
                   fontWeight: FontWeight.w900,
                   fontFamily: 'monospace',
                   height: 1.0,
@@ -192,7 +286,7 @@ class ActiveTurnByTurnHud extends StatelessWidget {
               Text(
                 'km/h',
                 style: TextStyle(
-                  fontSize: 14.0,
+                  fontSize: 13.0,
                   fontWeight: FontWeight.w700,
                   color: isDark
                       ? AppColors.cyanLuminous
@@ -205,29 +299,29 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                 children: [
                   Text(
                     'RESTANTE',
-                    style: AppTypography.badgeLabel.copyWith(fontSize: 9.0),
+                    style: AppTypography.badgeLabel.copyWith(fontSize: 8.5),
                   ),
                   Text(
                     '${(tracker.remainingDistanceMeters / 1000).toStringAsFixed(1)} km',
                     style: const TextStyle(
-                      fontSize: 16.0,
+                      fontSize: 15.0,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(width: 16.0),
+              const SizedBox(width: 14.0),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     'PROGRESO',
-                    style: AppTypography.badgeLabel.copyWith(fontSize: 9.0),
+                    style: AppTypography.badgeLabel.copyWith(fontSize: 8.5),
                   ),
                   Text(
                     '${tracker.progressPercentage.toStringAsFixed(0)} %',
                     style: const TextStyle(
-                      fontSize: 16.0,
+                      fontSize: 15.0,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -235,19 +329,19 @@ class ActiveTurnByTurnHud extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12.0),
+          const SizedBox(height: 8.0),
 
           // Barra de progreso
           LinearProgressIndicator(
             value: (tracker.progressPercentage / 100.0).clamp(0.0, 1.0),
-            minHeight: 5.0,
-            borderRadius: BorderRadius.circular(3.0),
+            minHeight: 4.0,
+            borderRadius: BorderRadius.circular(2.0),
             color: isDark ? AppColors.cyanLuminous : AppColors.electricBlue,
             backgroundColor: isDark
                 ? AppColors.cardNavy
                 : AppColors.silver.withValues(alpha: 0.5),
           ),
-          const SizedBox(height: 12.0),
+          const SizedBox(height: 10.0),
 
           // Botones Pausar / Finalizar
           Row(
@@ -256,10 +350,10 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: onResume,
-                    icon: const Icon(Icons.play_arrow, size: 18.0),
+                    icon: const Icon(Icons.play_arrow, size: 16.0),
                     label: const Text('Reanudar'),
                     style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12.0),
+                      padding: const EdgeInsets.symmetric(vertical: 9.0),
                     ),
                   ),
                 )
@@ -267,10 +361,10 @@ class ActiveTurnByTurnHud extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: onPause,
-                    icon: const Icon(Icons.pause, size: 18.0),
+                    icon: const Icon(Icons.pause, size: 16.0),
                     label: const Text('Pausar'),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12.0),
+                      padding: const EdgeInsets.symmetric(vertical: 9.0),
                     ),
                   ),
                 ),
@@ -278,10 +372,10 @@ class ActiveTurnByTurnHud extends StatelessWidget {
               Expanded(
                 child: FilledButton.tonalIcon(
                   onPressed: () => _confirmFinish(context),
-                  icon: const Icon(Icons.stop, size: 18.0),
+                  icon: const Icon(Icons.stop, size: 16.0),
                   label: const Text('Finalizar'),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    padding: const EdgeInsets.symmetric(vertical: 9.0),
                     backgroundColor: AppColors.error.withValues(alpha: 0.18),
                     foregroundColor: AppColors.error,
                   ),

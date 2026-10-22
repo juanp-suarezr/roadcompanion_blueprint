@@ -6,12 +6,19 @@ import '../../../app/theme/app_typography.dart';
 import '../../../core/widgets/estela_logo.dart';
 import '../../../core/widgets/storm_badge.dart';
 
+import '../../../features/navigation/domain/services/voice_navigation_service.dart';
+import '../../../features/navigation/infrastructure/services/flutter_blue_plus_tripper_service.dart';
+import '../../../features/navigation/infrastructure/services/flutter_tts_voice_navigation_service.dart';
+import '../../../features/navigation/presentation/screens/tripper_diagnostic_screen.dart';
+
 /// Pantalla de Ajustes de Road Companion.
 ///
 /// Gestiona la selección de tema (Sistema / Claro / Oscuro), el perfil
-/// personalizado de la motocicleta y el estado transparente de dispositivos externos.
+/// personalizado de la motocicleta, indicaciones por voz TTS y el estado transparente de dispositivos externos.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final VoiceNavigationService? voiceService;
+
+  const SettingsScreen({super.key, this.voiceService});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -21,7 +28,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _brandController;
   late final TextEditingController _modelController;
   late final TextEditingController _customNameController;
+  late final VoiceNavigationService _voiceService;
   bool _initialized = false;
+  bool _isTestingVoice = false;
+  String? _voiceTestMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _voiceService = widget.voiceService ?? FlutterTtsVoiceNavigationService();
+    _voiceService.init().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -42,7 +61,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _brandController.dispose();
     _modelController.dispose();
     _customNameController.dispose();
+    if (widget.voiceService == null) {
+      _voiceService.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _handleTestVoice() async {
+    setState(() {
+      _isTestingVoice = true;
+      _voiceTestMessage = 'Emitiendo locución de prueba en español...';
+    });
+
+    final success = await _voiceService.testVoice(
+      sampleText: 'REstelar: audio de navegación por voz listo en español.',
+    );
+
+    if (mounted) {
+      setState(() {
+        _isTestingVoice = false;
+        _voiceTestMessage = success
+            ? 'Prueba emitida correctamente.'
+            : 'Fallo al reproducir. Verifica que los Servicios de Voz de Google estén activos.';
+      });
+    }
   }
 
   void _saveMotorcycleProfile() {
@@ -251,6 +293,131 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 24.0),
 
+            // --- SECCIÓN: VOZ Y AUDIO DE NAVEGACIÓN ---
+            _buildSectionHeader('VOZ Y NAVEGACIÓN', Icons.record_voice_over_outlined),
+            const SizedBox(height: 10.0),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Indicaciones de voz (TTS)',
+                          style: TextStyle(
+                            fontSize: 16.0,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        StormBadge(
+                          label: _formatVoiceStatus(_voiceService.status),
+                          variant: _getVoiceBadgeVariant(_voiceService.status),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8.0),
+                    Text(
+                      _voiceService.statusMessage ??
+                          'Emite instrucciones por voz en español adaptadas para intercomunicadores de casco Bluetooth.',
+                      style: TextStyle(
+                        fontSize: 13.0,
+                        color: isDark
+                            ? AppColors.secondaryTextDark
+                            : AppColors.secondaryTextLight,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 14.0),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(0, 44),
+                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+                            ),
+                            onPressed: _isTestingVoice ? null : _handleTestVoice,
+                            icon: Icon(
+                              _isTestingVoice
+                                  ? Icons.hourglass_top_rounded
+                                  : Icons.volume_up_rounded,
+                              size: 18.0,
+                            ),
+                            label: Text(_isTestingVoice ? 'Emitiendo...' : 'Probar voz'),
+                          ),
+                        ),
+                        const SizedBox(width: 10.0),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 44),
+                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _voiceService.toggleMute();
+                              });
+                            },
+                            icon: Icon(
+                              _voiceService.isMuted
+                                  ? Icons.volume_off_rounded
+                                  : Icons.volume_up_rounded,
+                              size: 18.0,
+                            ),
+                            label: Text(_voiceService.isMuted ? 'Desilenciar' : 'Silenciar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_voiceTestMessage != null) ...[
+                      const SizedBox(height: 10.0),
+                      Text(
+                        _voiceTestMessage!,
+                        style: const TextStyle(
+                          fontSize: 12.0,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryGold,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12.0),
+                    Container(
+                      padding: const EdgeInsets.all(12.0),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? AppColors.darkSurfaceVariant
+                            : AppColors.lightSurfaceVariant,
+                        borderRadius: BorderRadius.circular(10.0),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 18.0,
+                            color: AppColors.cyanLuminous,
+                          ),
+                          SizedBox(width: 10.0),
+                          Expanded(
+                            child: Text(
+                              'Para escuchar las instrucciones en tu intercomunicador, vincula tu casco por Bluetooth al teléfono y mantén el volumen multimedia activo.',
+                              style: TextStyle(
+                                fontSize: 12.0,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24.0),
+
             // --- SECCIÓN 3: DISPOSITIVOS EXTERNOS ---
             _buildSectionHeader('DISPOSITIVOS', Icons.devices_other),
             const SizedBox(height: 10.0),
@@ -288,32 +455,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12.0),
-                    Container(
-                      padding: const EdgeInsets.all(12.0),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.darkSurfaceVariant
-                            : AppColors.lightSurfaceVariant,
-                        borderRadius: BorderRadius.circular(10.0),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.security,
-                            size: 18.0,
-                            color: AppColors.steelBlue,
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(0, 48),
+                          backgroundColor: isDark
+                              ? AppColors.cyanLuminous
+                              : AppColors.surfaceNavy,
+                          foregroundColor:
+                              isDark ? AppColors.nightBlue : Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          SizedBox(width: 10.0),
-                          Expanded(
-                            child: Text(
-                              'Esta versión no realiza escaneos Bluetooth, no solicita permisos de radio ni empareja hardware.',
-                              style: TextStyle(
-                                fontSize: 12.0,
-                                fontWeight: FontWeight.w500,
-                              ),
+                        ),
+                        icon: const Icon(
+                          Icons.bluetooth_searching_rounded,
+                          size: 18.0,
+                        ),
+                        label: const Text(
+                          'Conectar mi Tripper / Laboratorio BLE',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TripperDiagnosticScreen(
+                              bleService: FlutterBluePlusTripperService(),
+                              voiceService: _voiceService,
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ],
@@ -476,4 +647,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  String _formatVoiceStatus(VoiceServiceStatus status) {
+    switch (status) {
+      case VoiceServiceStatus.uninitialized:
+        return 'INICIALIZANDO';
+      case VoiceServiceStatus.initializing:
+        return 'INICIALIZANDO';
+      case VoiceServiceStatus.ready:
+        return 'VOZ LISTA';
+      case VoiceServiceStatus.muted:
+        return 'SILENCIADA';
+      case VoiceServiceStatus.error:
+        return 'ERROR DE VOZ';
+    }
+  }
+
+  StormBadgeVariant _getVoiceBadgeVariant(VoiceServiceStatus status) {
+    switch (status) {
+      case VoiceServiceStatus.ready:
+        return StormBadgeVariant.success;
+      case VoiceServiceStatus.muted:
+        return StormBadgeVariant.neutral;
+      case VoiceServiceStatus.initializing:
+      case VoiceServiceStatus.uninitialized:
+        return StormBadgeVariant.info;
+      case VoiceServiceStatus.error:
+        return StormBadgeVariant.warning;
+    }
+  }
 }
+

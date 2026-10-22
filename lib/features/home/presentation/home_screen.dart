@@ -4,7 +4,9 @@ import '../../../app/state/app_settings_state.dart';
 import '../../../app/theme/app_typography.dart';
 import '../../../core/widgets/quick_action_card.dart';
 import '../../../core/widgets/road_header.dart';
+import '../../navigation/infrastructure/services/flutter_blue_plus_tripper_service.dart';
 import '../../navigation/presentation/navigation_screen.dart';
+import '../../navigation/presentation/screens/tripper_diagnostic_screen.dart';
 import '../../placeholder/presentation/coming_soon_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import 'widgets/external_display_banner.dart';
@@ -50,7 +52,12 @@ class HomeScreen extends StatelessWidget {
 
                   // 3. Banner transparente de estado de pantalla externa
                   ExternalDisplayBanner(
-                    onTap: () => _navigateTo(context, const SettingsScreen()),
+                    onTap: () => _navigateTo(
+                      context,
+                      TripperDiagnosticScreen(
+                        bleService: FlutterBluePlusTripperService(),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24.0),
 
@@ -83,6 +90,19 @@ class HomeScreen extends StatelessWidget {
                     title: 'Navegación',
                     subtitle: 'Demostración de ruta asistida y odometría',
                     onTap: () => _navigateTo(context, const NavigationScreen()),
+                  ),
+                  const SizedBox(height: 10.0),
+
+                  QuickActionCard(
+                    icon: Icons.bluetooth_searching_rounded,
+                    title: 'Laboratorio Tripper',
+                    subtitle: 'Conectar y escanear Tripper Pod BLE',
+                    onTap: () => _navigateTo(
+                      context,
+                      TripperDiagnosticScreen(
+                        bleService: FlutterBluePlusTripperService(),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10.0),
 

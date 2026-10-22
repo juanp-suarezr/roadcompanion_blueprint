@@ -5,6 +5,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../domain/entities/tripper_connection_state.dart';
 import '../../domain/entities/tripper_device.dart';
+import '../../domain/entities/tripper_gatt_info.dart';
 import '../../domain/entities/tripper_maneuver_payload.dart';
 import '../../domain/services/tripper_ble_service.dart';
 
@@ -16,10 +17,13 @@ class FlutterBluePlusTripperService implements TripperBleService {
   final _stateController = StreamController<TripperConnectionState>.broadcast();
   final _devicesController =
       StreamController<List<TripperDevice>>.broadcast();
+  final _gattServicesController =
+      StreamController<List<TripperGattService>>.broadcast();
   final _logController = StreamController<String>.broadcast();
 
   final List<String> _diagnosticLogs = [];
   final List<TripperDevice> _discoveredDevices = [];
+  final List<TripperGattService> _discoveredGattServices = [];
   TripperConnectionState _currentState = TripperConnectionState.idle;
   TripperDevice? _connectedDevice;
   BluetoothDevice? _activeBleDevice;
@@ -48,6 +52,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
   @override
   List<TripperDevice> get discoveredDevices =>
       List.unmodifiable(_discoveredDevices);
+
+  @override
+  Stream<List<TripperGattService>> get discoveredGattServicesStream =>
+      _gattServicesController.stream;
+
+  @override
+  List<TripperGattService> get discoveredGattServices =>
+      List.unmodifiable(_discoveredGattServices);
 
   @override
   Stream<String> get diagnosticLogStream => _logController.stream;
@@ -204,12 +216,31 @@ class FlutterBluePlusTripperService implements TripperBleService {
       final services = await bleDevice.discoverServices();
       _log('Servicios GATT descubiertos: ${services.length}');
 
+      _discoveredGattServices.clear();
       for (final service in services) {
         _log('-> Servicio UUID: ${service.uuid}');
+        final charList = <TripperGattCharacteristic>[];
         for (final char in service.characteristics) {
           _log('   -> Característica UUID: ${char.uuid} [Props: read=${char.properties.read}, write=${char.properties.write}, notify=${char.properties.notify}]');
+          charList.add(
+            TripperGattCharacteristic(
+              uuid: char.uuid.toString(),
+              canRead: char.properties.read,
+              canWrite: char.properties.write,
+              canWriteWithoutResponse: char.properties.writeWithoutResponse,
+              canNotify: char.properties.notify,
+              canIndicate: char.properties.indicate,
+            ),
+          );
         }
+        _discoveredGattServices.add(
+          TripperGattService(
+            uuid: service.uuid.toString(),
+            characteristics: charList,
+          ),
+        );
       }
+      _gattServicesController.add(List.unmodifiable(_discoveredGattServices));
 
       _connectedDevice = device;
       _setState(TripperConnectionState.connected);
@@ -221,6 +252,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _setState(TripperConnectionState.error);
       _connectedDevice = null;
       _activeBleDevice = null;
+      _discoveredGattServices.clear();
+      _gattServicesController.add(const []);
       _log('Error al conectar con el dispositivo: $e');
       return false;
     }
@@ -236,10 +269,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _deviceStateSubscription = null;
       _activeBleDevice = null;
       _connectedDevice = null;
+      _discoveredGattServices.clear();
+      _gattServicesController.add(const []);
       _setState(TripperConnectionState.idle);
       _log('Desconexión completada.');
     } catch (e) {
       _log('Aviso al desconectar: $e');
+      _discoveredGattServices.clear();
+      _gattServicesController.add(const []);
       _setState(TripperConnectionState.idle);
     }
   }

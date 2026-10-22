@@ -26,6 +26,7 @@ class RealMapWidget extends StatelessWidget {
   final VoidCallback? onRecenter;
   final MapTileProvider tileProvider;
   final String? cartoApiKey;
+  final double controlsBottomOffset;
 
   const RealMapWidget({
     super.key,
@@ -44,6 +45,7 @@ class RealMapWidget extends StatelessWidget {
     this.onRecenter,
     this.tileProvider = MapTileProvider.auto,
     this.cartoApiKey,
+    this.controlsBottomOffset = 120.0,
   });
 
   @override
@@ -242,7 +244,7 @@ class RealMapWidget extends StatelessWidget {
               alignment: Alignment.bottomLeft,
               source: Text(
                 tileConfig.attributionText,
-                style: const TextStyle(fontSize: 9.0, color: Colors.white70),
+                style: const TextStyle(fontSize: 8.5, color: Colors.white70),
               ),
             ),
           ],
@@ -291,18 +293,18 @@ class RealMapWidget extends StatelessWidget {
         // Controles de zoom y centrado sobre el mapa
         Positioned(
           right: 14.0,
-          bottom: 120.0,
+          bottom: controlsBottomOffset,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Botón Recentrar en mi ubicación GPS
-              if (onRecenter != null && riderPosition != null) ...[
+              if (onRecenter != null) ...[
                 _buildMapFloatingButton(
                   icon: Icons.my_location,
                   tooltip: 'Centrar en mi ubicación',
                   onPressed: onRecenter!,
                   isDark: isDark,
-                  isHighlighted: true,
+                  isHighlighted: riderPosition != null,
                 ),
                 const SizedBox(height: 10.0),
               ],
@@ -343,24 +345,27 @@ class RealMapWidget extends StatelessWidget {
     required bool isDark,
     bool isHighlighted = false,
   }) {
-    return Material(
-      color: isHighlighted
-          ? (isDark ? AppColors.surfaceNavy : AppColors.whiteSurface)
-          : (isDark ? AppColors.cardNavy : AppColors.whiteSurface),
-      shape: const CircleBorder(),
-      elevation: 4.0,
-      shadowColor: Colors.black54,
-      child: InkWell(
-        onTap: onPressed,
-        customBorder: const CircleBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: Icon(
-            icon,
-            size: 20.0,
-            color: isHighlighted
-                ? (isDark ? AppColors.cyanLuminous : AppColors.electricBlue)
-                : (isDark ? AppColors.coldWhite : AppColors.primaryTextLight),
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: isHighlighted
+            ? (isDark ? AppColors.surfaceNavy : AppColors.whiteSurface)
+            : (isDark ? AppColors.cardNavy : AppColors.whiteSurface),
+        shape: const CircleBorder(),
+        elevation: 4.0,
+        shadowColor: Colors.black54,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Icon(
+              icon,
+              size: 20.0,
+              color: isHighlighted
+                  ? (isDark ? AppColors.cyanLuminous : AppColors.electricBlue)
+                  : (isDark ? AppColors.coldWhite : AppColors.primaryTextLight),
+            ),
           ),
         ),
       ),
