@@ -90,6 +90,14 @@ class MockTripperBleService implements TripperBleService {
   }
 
   @override
+  Future<bool> probeGattOnly(TripperDevice device) async {
+    _connectedDevice = device;
+    _currentState = TripperConnectionState.servicesDiscovered;
+    _stateCtrl.add(_currentState);
+    return true;
+  }
+
+  @override
   Future<bool> connect(TripperDevice device) async {
     _connectedDevice = device;
     _currentState = TripperConnectionState.connected;

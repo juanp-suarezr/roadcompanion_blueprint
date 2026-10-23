@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../domain/entities/tripper_connection_state.dart';
@@ -49,6 +50,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
   BluetoothDevice? _activeBleDevice;
   BluetoothCharacteristic? _writeCharacteristic;
   Timer? _keepAliveTimer;
+  Timer? _probeRetentionTimer;
+  int _probeRetentionSeconds = 0;
   DateTime? _lastPacketSentTime;
   DateTime? _connectedSince;
   int _disconnectCount = 0;
@@ -57,12 +60,56 @@ class FlutterBluePlusTripperService implements TripperBleService {
   String? _lastErrorStage;
   String? _lastErrorDetail;
 
+  static const MethodChannel _controlChannel = MethodChannel(
+    'es.estela/bridge_controls',
+  );
+  static const EventChannel _gattServerEventChannel = EventChannel(
+    'es.estela/tripper_gatt_server_events',
+  );
+  StreamSubscription? _gattServerSubscription;
+
   StreamSubscription? _scanSubscription;
   StreamSubscription? _deviceStateSubscription;
   String? _lastScanError;
   bool _isConnecting = false;
   bool _isCancelRequested = false;
   String? _currentConnectionPhase;
+
+  Future<void> _ensureLocalGattServerStarted() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      final res = await _controlChannel.invokeMethod<Map>(
+        'startTripperGattServer',
+      );
+      final msg = res?['message'] ?? 'OK';
+      final ok = res?['success'] ?? false;
+      _log('[GATT-SERVER-LOCAL] ${ok ? "Iniciado" : "Aviso"}: $msg');
+
+      _gattServerSubscription ??= _gattServerEventChannel
+          .receiveBroadcastStream()
+          .listen(
+            (dynamic event) {
+              if (event is Map) {
+                final type = event['type'];
+                if (type == 'data') {
+                  final hex = event['hex'];
+                  final addr = event['address'];
+                  _log('<- [Tripper Pod via GATT Server Local] ($addr): $hex');
+                } else if (type == 'connection') {
+                  final state = event['state'];
+                  final addr = event['address'];
+                  _log('[GATT-SERVER-LOCAL] Periférico ($addr) estado: $state');
+                }
+              }
+            },
+            onError: (err) {
+              _log('[GATT-SERVER-LOCAL] Error en stream de eventos: $err');
+            },
+          );
+    } catch (e) {
+      _log('[GATT-SERVER-LOCAL] No se pudo inicializar: $e');
+    }
+  }
 
   @override
   bool get isConnecting => _isConnecting;
@@ -140,7 +187,6 @@ class FlutterBluePlusTripperService implements TripperBleService {
     }
     _logController.add(entry);
   }
-
 
   @override
   Future<bool> isBluetoothAvailable() async {
@@ -321,7 +367,19 @@ class FlutterBluePlusTripperService implements TripperBleService {
   }
 
   @override
+  Future<bool> probeGattOnly(TripperDevice device) async {
+    return _connectInternal(device, probeOnly: true);
+  }
+
+  @override
   Future<bool> connect(TripperDevice device) async {
+    return _connectInternal(device, probeOnly: false);
+  }
+
+  Future<bool> _connectInternal(
+    TripperDevice device, {
+    required bool probeOnly,
+  }) async {
     if (_isConnecting) {
       _log('Intento de conexión ignorado: ya existe una conexión en curso.');
       return false;
@@ -332,7 +390,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
     final stopwatch = Stopwatch()..start();
 
     final nowIso = DateTime.now().toIso8601String();
-    _log('=== INTENTO DE CONEXIÓN BLE ===');
+    _log(
+      '=== INTENTO DE CONEXIÓN BLE ${probeOnly ? "(MODO SONDA GATT AISLADA)" : "(PROTOCOLO COMPLETO)"} ===',
+    );
     _log(
       'Hora: $nowIso | Dispositivo: "${device.name}" | ID: ${device.id} | RSSI: ${device.rssi} dBm',
     );
@@ -346,6 +406,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
     }
 
     try {
+      // 0. Inicializar servidor GATT local en Android (para recibir respuestas del Pod según protocolo documentado)
+      await _ensureLocalGattServerStarted();
+
       // 1. Detener el escaneo previo y esperar estabilización del stack nativo
       _currentConnectionPhase = 'deteniendo_escaneo';
       _log(
@@ -392,6 +455,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
                 _currentState == TripperConnectionState.gattConnected ||
                 _currentState == TripperConnectionState.servicesDiscovered)) {
           _disconnectCount++;
+          _probeRetentionTimer?.cancel();
+          _probeRetentionTimer = null;
           _keepAliveTimer?.cancel();
           _keepAliveTimer = null;
           _writeCharacteristic = null;
@@ -404,20 +469,22 @@ class FlutterBluePlusTripperService implements TripperBleService {
           _log(
             'Dispositivo desconectado de forma remota o por watchdog/pérdida de señal (Desconexión acumulada #$_disconnectCount).',
           );
-        } else if (state == BluetoothConnectionState.connected &&
-            !_currentState.isReadyForNavigation &&
-            _currentState != TripperConnectionState.connecting) {
-          _log('Reconexión detectada. Rediscurriendo servicios GATT...');
-          _discoverAndRecordServices(bleDevice, device);
         }
       });
 
       // 3. Conexión física con timeout de 30 segundos
+      // IMPORTANTE: mtu: null es OBLIGATORIO para el Tripper Pod.
+      // Por defecto FlutterBluePlus solicita MTU 512 en Android. El microcontrolador NXP
+      // del Tripper Pod opera en MTU estándar de 23 bytes (20 bytes de carga útil) y
+      // desconecta la sesión si el cliente intenta negociar MTU expandido (código 147 / requestMtu error).
       _currentConnectionPhase = 'esperando_confirmacion_gatt';
-      _log('Fase 3/6: Esperando confirmación de enlace GATT del periférico...');
+      _log(
+        'Fase 3/6: Solicitando enlace GATT con MTU estándar fijo (sin negociación 512)...',
+      );
       await bleDevice.connect(
         license: License.nonprofit,
         autoConnect: false,
+        mtu: null,
         timeout: const Duration(seconds: 30),
       );
 
@@ -434,13 +501,51 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _setState(TripperConnectionState.gattConnected);
       _log('¡Enlace GATT establecido físicamente!');
 
+      // Pausa preventiva para permitir que Android 16 (Samsung Galaxy A35) estabilice el socket GATT
+      await Future.delayed(const Duration(milliseconds: 350));
+
       // 4. Descubrimiento de servicios y características GATT
+      // IMPORTANTE: subscribeToServicesChanged: false evita la excepción PlatformException(setNotifyValue)
       _currentConnectionPhase = 'descubriendo_servicios';
       _log(
-        'Fase 4/6: Enlace GATT confirmado. Descubriendo servicios y características...',
+        'Fase 4/6: Enlace GATT confirmado. Descubriendo servicios y características (subscribeToServicesChanged: false)...',
       );
-      final servicesCount = await _discoverAndRecordServices(bleDevice, device);
+      final services = await _discoverAndRecordServices(bleDevice, device);
       _setState(TripperConnectionState.servicesDiscovered);
+
+      if (probeOnly) {
+        _connectedDevice = device;
+        _currentConnectionPhase = 'sonda_completada';
+        stopwatch.stop();
+
+        _log('=============================================');
+        _log('¡SONDA GATT AISLADA EXITOSA (SIN TRÁFICO)!');
+        _log('Dispositivo: "${device.name}" (${device.id})');
+        _log('Servicios descubiertos: ${services.length}');
+        _log(
+          'Duración hasta enlace y descubrimiento: ${stopwatch.elapsedMilliseconds} ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)',
+        );
+        _log(
+          'Manteniendo conexión abierta para monitorizar estabilidad de retención...',
+        );
+        _log('=============================================');
+
+        _probeRetentionSeconds = 0;
+        _probeRetentionTimer?.cancel();
+        _probeRetentionTimer = Timer.periodic(const Duration(seconds: 1), (
+          timer,
+        ) {
+          _probeRetentionSeconds++;
+          if (_probeRetentionSeconds % 5 == 0 || _probeRetentionSeconds <= 5) {
+            _log(
+              '[SONDA-GATT] Enlace retenido de forma estable: ${_probeRetentionSeconds}s',
+            );
+          }
+        });
+
+        _isConnecting = false;
+        return true;
+      }
 
       // 5. Identificación de la característica de comunicación NXP Wireless UART
       _currentConnectionPhase = 'identificando_caracteristica';
@@ -449,7 +554,6 @@ class FlutterBluePlusTripperService implements TripperBleService {
       );
 
       BluetoothCharacteristic? targetChar;
-      final services = await bleDevice.discoverServices();
       for (final s in services) {
         final sUuid = s.uuid.toString().toLowerCase();
         if (sUuid.contains('01ff0100') || sUuid.contains('fee7')) {
@@ -544,7 +648,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _log('=============================================');
       _log('¡CONEXIÓN Y SESIÓN TRIPPER POD EXITOSA!');
       _log('Dispositivo: "${device.name}" (${device.id})');
-      _log('Servicios descubiertos: $servicesCount');
+      _log('Servicios descubiertos: ${services.length}');
       _log('Característica de escritura activa: ${targetChar.uuid}');
       _log(
         'Duración total: ${stopwatch.elapsedMilliseconds} ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)',
@@ -562,6 +666,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
       _lastErrorStage = failedPhase;
       _lastErrorDetail = e.toString();
+      _probeRetentionTimer?.cancel();
+      _probeRetentionTimer = null;
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
       _writeCharacteristic = null;
@@ -585,13 +691,16 @@ class FlutterBluePlusTripperService implements TripperBleService {
       }
 
       final errStr = e.toString();
-      final isTimeout147 = errStr.contains('147') ||
+      final isTimeout147 =
+          errStr.contains('147') ||
           errStr.toLowerCase().contains('timeout') ||
           errStr.toLowerCase().contains('connection_timeout');
 
       if (isTimeout147) {
         _log('---------------------------------------------');
-        _log('DIAGNÓSTICO CRÍTICO: TIMEOUT GATT / CÓDIGO 147 (GATT_CONNECTION_TIMEOUT)');
+        _log(
+          'DIAGNÓSTICO CRÍTICO: TIMEOUT GATT / CÓDIGO 147 (GATT_CONNECTION_TIMEOUT)',
+        );
         _log(
           '1. VENTANA DE ANUNCIO CERRADA: El Tripper Pod original de Royal Enfield anuncia BLE únicamente durante los primeros 30 a 120 segundos tras girar la llave de la moto (contacto ON). Pasado ese tiempo apaga la radio BLE para ahorrar batería. SOLUCIÓN: Gira la llave a OFF y de nuevo a ON para reabrir la ventana publicitaria.',
         );
@@ -705,9 +814,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
   @override
   Future<bool> sendManeuver(TripperManeuverPayload maneuver) async {
     if (_writeCharacteristic == null || !_currentState.isReadyForNavigation) {
-      _log(
-        'No se puede emitir maniobra: sesión Tripper Pod no autenticada.',
-      );
+      _log('No se puede emitir maniobra: sesión Tripper Pod no autenticada.');
       return false;
     }
 
@@ -716,12 +823,19 @@ class FlutterBluePlusTripperService implements TripperBleService {
     return _sendPacketDirect(bytes, description: maneuver.toDiagnosticString());
   }
 
-  Future<int> _discoverAndRecordServices(
+  Future<List<BluetoothService>> _discoverAndRecordServices(
     BluetoothDevice bleDevice,
     TripperDevice device,
   ) async {
-    final services = await bleDevice.discoverServices();
-    _log('Servicios GATT descubiertos: ${services.length}');
+    final stopwatch = Stopwatch()..start();
+    final services = await bleDevice.discoverServices(
+      subscribeToServicesChanged: false,
+      timeout: 15,
+    );
+    stopwatch.stop();
+    _log(
+      'Servicios GATT descubiertos: ${services.length} (duración: ${stopwatch.elapsedMilliseconds} ms)',
+    );
 
     _discoveredGattServices.clear();
     for (final service in services) {
@@ -729,7 +843,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       final charList = <TripperGattCharacteristic>[];
       for (final char in service.characteristics) {
         _log(
-          '   -> Característica UUID: ${char.uuid} [Lectura: ${char.properties.read}, Escritura: ${char.properties.write}, Notificación: ${char.properties.notify}]',
+          '   -> Característica UUID: ${char.uuid} [Lectura: ${char.properties.read}, Escritura: ${char.properties.write}, WriteNoResp: ${char.properties.writeWithoutResponse}, Notificación: ${char.properties.notify}, Indicación: ${char.properties.indicate}]',
         );
         charList.add(
           TripperGattCharacteristic(
@@ -750,7 +864,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       );
     }
     _gattServicesController.add(List.unmodifiable(_discoveredGattServices));
-    return services.length;
+    return services;
   }
 
   @override
@@ -758,6 +872,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
     try {
       _setState(TripperConnectionState.disconnecting);
       _log('Desconectando dispositivo de forma segura...');
+      _probeRetentionTimer?.cancel();
+      _probeRetentionTimer = null;
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
       _writeCharacteristic = null;
@@ -774,6 +890,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _log('Desconexión completada.');
     } catch (e) {
       _log('Aviso al desconectar: $e');
+      _probeRetentionTimer?.cancel();
+      _probeRetentionTimer = null;
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
       _writeCharacteristic = null;
@@ -802,12 +920,16 @@ class FlutterBluePlusTripperService implements TripperBleService {
       'Estado de conexión: ${_currentState.name} (${_currentState.displayName})',
     );
     buffer.writeln('Fase de conexión: ${_currentConnectionPhase ?? "ninguna"}');
-    buffer.writeln('Tiempo conectado desde: ${_connectedSince?.toIso8601String() ?? "No conectado"}');
+    buffer.writeln(
+      'Tiempo conectado desde: ${_connectedSince?.toIso8601String() ?? "No conectado"}',
+    );
     buffer.writeln('Contador de desconexiones: $_disconnectCount');
     buffer.writeln('Última etapa de error: ${_lastErrorStage ?? "ninguna"}');
     buffer.writeln('Último detalle de error: ${_lastErrorDetail ?? "ninguno"}');
     buffer.writeln('Última trama enviada: ${_lastPacketSentHex ?? "ninguna"}');
-    buffer.writeln('Resultado última transmisión: ${_lastTransmissionResult ?? "ninguno"}');
+    buffer.writeln(
+      'Resultado última transmisión: ${_lastTransmissionResult ?? "ninguno"}',
+    );
     buffer.writeln(
       'Dispositivo conectado: ${_connectedDevice != null ? "${_connectedDevice!.name} (${_connectedDevice!.id})" : "Ninguno"}',
     );

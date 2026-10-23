@@ -1557,15 +1557,18 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 size: 18,
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Módulo GPS y Seguimiento Satelital',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+              const Expanded(
+                child: Text(
+                  'Módulo GPS y Seguimiento Satelital',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -2360,27 +2363,54 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ],
             )
           else
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: device.isTripperCandidate
-                    ? AppColors.primaryGold
-                    : Colors.white12,
-                foregroundColor: device.isTripperCandidate
-                    ? AppColors.backgroundBlack
-                    : AppColors.textPrimary,
-                minimumSize: const Size(0, 36),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.secondaryCyan,
+                    side: const BorderSide(color: AppColors.secondaryCyan),
+                    minimumSize: const Size(0, 36),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: widget.bleService.isConnecting
+                      ? null
+                      : () => widget.bleService.probeGattOnly(device),
+                  child: const Text(
+                    'Sonda GATT',
+                    style: TextStyle(fontSize: 11),
+                  ),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: device.isTripperCandidate
+                        ? AppColors.primaryGold
+                        : Colors.white12,
+                    foregroundColor: device.isTripperCandidate
+                        ? AppColors.backgroundBlack
+                        : AppColors.textPrimary,
+                    minimumSize: const Size(0, 36),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: widget.bleService.isConnecting
+                      ? null
+                      : () => widget.bleService.connect(device),
+                  child: const Text('Conectar', style: TextStyle(fontSize: 12)),
                 ),
-              ),
-              onPressed: widget.bleService.isConnecting
-                  ? null
-                  : () => widget.bleService.connect(device),
-              child: const Text('Conectar', style: TextStyle(fontSize: 12)),
+              ],
             ),
         ],
       ),
@@ -3008,11 +3038,15 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               children: [
                 Icon(icon, size: 12, color: AppColors.textSecondary),
                 const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 10,
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 10,
+                    ),
                   ),
                 ),
               ],
@@ -3020,6 +3054,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             const SizedBox(height: 4),
             Text(
               value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 12,

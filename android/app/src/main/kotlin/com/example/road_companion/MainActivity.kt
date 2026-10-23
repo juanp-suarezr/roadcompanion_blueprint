@@ -50,6 +50,17 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_URL", "URL requerida", null)
                     }
                 }
+                "startTripperGattServer" -> {
+                    val res = TripperGattServerManager.startGattServer(this)
+                    result.success(res)
+                }
+                "stopTripperGattServer" -> {
+                    TripperGattServerManager.stopGattServer()
+                    result.success(true)
+                }
+                "isTripperGattServerRunning" -> {
+                    result.success(TripperGattServerManager.isServerRunning())
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -69,6 +80,30 @@ class MainActivity : FlutterActivity() {
 
                 override fun onCancel(arguments: Any?) {
                     NavigationNotificationListenerService.notificationListener = null
+                }
+            }
+        )
+
+        // Canal de eventos para el servidor GATT local del Tripper Pod
+        val GATT_SERVER_EVENT_CHANNEL = "es.estela/tripper_gatt_server_events"
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, GATT_SERVER_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    TripperGattServerManager.onDataReceivedListener = { hex, address ->
+                        runOnUiThread {
+                            events?.success(mapOf("type" to "data", "hex" to hex, "address" to address))
+                        }
+                    }
+                    TripperGattServerManager.onConnectionStateListener = { state, address ->
+                        runOnUiThread {
+                            events?.success(mapOf("type" to "connection", "state" to state, "address" to address))
+                        }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    TripperGattServerManager.onDataReceivedListener = null
+                    TripperGattServerManager.onConnectionStateListener = null
                 }
             }
         )

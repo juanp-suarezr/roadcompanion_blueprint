@@ -45,6 +45,10 @@ abstract class TripperBleService {
   /// Solicita conectar con un dispositivo específico tras acción expresa del usuario.
   Future<bool> connect(TripperDevice device);
 
+  /// Realiza únicamente el enlace físico GATT y descubrimiento de servicios,
+  /// manteniendo la conexión abierta sin enviar datos ni activar notificaciones (sonda aislada).
+  Future<bool> probeGattOnly(TripperDevice device) async => false;
+
   /// Desconecta de forma segura el enlace activo.
   Future<void> disconnect();
 

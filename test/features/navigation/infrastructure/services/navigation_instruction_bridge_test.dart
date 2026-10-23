@@ -41,6 +41,9 @@ class _FakeBleService implements TripperBleService {
   Future<bool> sendTestMessage() async => true;
 
   @override
+  Future<bool> probeGattOnly(TripperDevice device) async => true;
+
+  @override
   Future<void> cancelPendingConnection() async {}
 
   @override
@@ -71,7 +74,8 @@ class _FakeBleService implements TripperBleService {
   List<TripperDevice> get discoveredDevices => [];
 
   @override
-  Stream<List<TripperDevice>> get discoveredDevicesStream => const Stream.empty();
+  Stream<List<TripperDevice>> get discoveredDevicesStream =>
+      const Stream.empty();
 
   @override
   List<TripperGattService> get discoveredGattServices => [];
@@ -111,7 +115,9 @@ class _FakeBleService implements TripperBleService {
   Stream<TripperConnectionState> get stateStream => const Stream.empty();
 
   @override
-  Future<void> startScan({Duration timeout = const Duration(seconds: 15)}) async {}
+  Future<void> startScan({
+    Duration timeout = const Duration(seconds: 15),
+  }) async {}
 
   @override
   Future<void> stopScan() async {}
@@ -160,52 +166,57 @@ void main() {
       bridge.dispose();
     });
 
-    test('Instrucción válida de Waze retenida si BLE no está autenticado', () async {
-      fakeBle.setState(TripperConnectionState.idle);
-      bridge.start();
+    test(
+      'Instrucción válida de Waze retenida si BLE no está autenticado',
+      () async {
+        fakeBle.setState(TripperConnectionState.idle);
+        bridge.start();
 
-      final instruction = BridgeNavigationInstruction(
-        source: BridgeSourceType.waze,
-        maneuverType: ManeuverType.left,
-        distanceMeters: 300,
-        rawText: 'Gira a la izquierda en 300 m',
-        receivedAt: DateTime(2026, 10, 22, 11, 0),
-        status: BridgeInstructionStatus.recognized,
-      );
+        final instruction = BridgeNavigationInstruction(
+          source: BridgeSourceType.waze,
+          maneuverType: ManeuverType.left,
+          distanceMeters: 300,
+          rawText: 'Gira a la izquierda en 300 m',
+          receivedAt: DateTime(2026, 10, 22, 11, 0),
+          status: BridgeInstructionStatus.recognized,
+        );
 
-      final eventFuture = bridge.eventsStream.first;
-      fakeSource.emit(instruction);
-      final event = await eventFuture;
+        final eventFuture = bridge.eventsStream.first;
+        fakeSource.emit(instruction);
+        final event = await eventFuture;
 
-      expect(event.adaptationResult.isSupported, isTrue);
-      expect(event.transmittedToTripper, isFalse);
-      expect(fakeBle.lastRawPacket, isNull);
-    });
+        expect(event.adaptationResult.isSupported, isTrue);
+        expect(event.transmittedToTripper, isFalse);
+        expect(fakeBle.lastRawPacket, isNull);
+      },
+    );
 
-    test('Instrucción válida de Waze transmitida al Pod cuando BLE está autenticado',
-        () async {
-      fakeBle.setState(TripperConnectionState.authenticated);
-      bridge.start();
+    test(
+      'Instrucción válida de Waze transmitida al Pod cuando BLE está autenticado',
+      () async {
+        fakeBle.setState(TripperConnectionState.authenticated);
+        bridge.start();
 
-      final instruction = BridgeNavigationInstruction(
-        source: BridgeSourceType.waze,
-        maneuverType: ManeuverType.right,
-        distanceMeters: 450,
-        rawText: 'Gira a la derecha en 450 m',
-        receivedAt: DateTime(2026, 10, 22, 11, 0),
-        status: BridgeInstructionStatus.recognized,
-      );
+        final instruction = BridgeNavigationInstruction(
+          source: BridgeSourceType.waze,
+          maneuverType: ManeuverType.right,
+          distanceMeters: 450,
+          rawText: 'Gira a la derecha en 450 m',
+          receivedAt: DateTime(2026, 10, 22, 11, 0),
+          status: BridgeInstructionStatus.recognized,
+        );
 
-      final eventFuture = bridge.eventsStream.first;
-      fakeSource.emit(instruction);
-      final event = await eventFuture;
+        final eventFuture = bridge.eventsStream.first;
+        fakeSource.emit(instruction);
+        final event = await eventFuture;
 
-      expect(event.adaptationResult.isSupported, isTrue);
-      expect(event.transmittedToTripper, isTrue);
-      expect(fakeBle.lastRawPacket, isNotNull);
-      expect(fakeBle.lastRawPacket!.length, 20);
-      expect(fakeBle.lastRawPacket![2], 0x15); // Turn right
-    });
+        expect(event.adaptationResult.isSupported, isTrue);
+        expect(event.transmittedToTripper, isTrue);
+        expect(fakeBle.lastRawPacket, isNotNull);
+        expect(fakeBle.lastRawPacket!.length, 20);
+        expect(fakeBle.lastRawPacket![2], 0x15); // Turn right
+      },
+    );
 
     test('Instrucción incompleta de Waze marcada como no compatible', () async {
       fakeBle.setState(TripperConnectionState.authenticated);
