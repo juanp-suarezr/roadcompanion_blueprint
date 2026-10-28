@@ -1,3 +1,4 @@
+import '../../../../domain/entities/maneuver_type.dart';
 import '../services/tripper_protocol.dart';
 
 /// Tipos de maniobra estándar de navegación para motocicleta.
@@ -38,6 +39,52 @@ class TripperManeuverPayload {
     required this.timestamp,
     this.isExperimental = true,
   });
+
+  /// Crea un payload de maniobra a partir del [ManeuverType] normalizado de la app.
+  factory TripperManeuverPayload.fromManeuver({
+    required ManeuverType type,
+    required int distanceMeters,
+    String nextStreet = '',
+    DateTime? timestamp,
+  }) {
+    TripperManeuverType mapped;
+    switch (type) {
+      case ManeuverType.left:
+      case ManeuverType.sharpLeft:
+        mapped = TripperManeuverType.turnLeft;
+        break;
+      case ManeuverType.right:
+      case ManeuverType.sharpRight:
+        mapped = TripperManeuverType.turnRight;
+        break;
+      case ManeuverType.slightLeft:
+        mapped = TripperManeuverType.slightLeft;
+        break;
+      case ManeuverType.slightRight:
+        mapped = TripperManeuverType.slightRight;
+        break;
+      case ManeuverType.uTurn:
+        mapped = TripperManeuverType.uTurn;
+        break;
+      case ManeuverType.roundabout:
+        mapped = TripperManeuverType.roundabout;
+        break;
+      case ManeuverType.arrive:
+        mapped = TripperManeuverType.destinationReached;
+        break;
+      case ManeuverType.depart:
+      case ManeuverType.straight:
+      case ManeuverType.unknown:
+        mapped = TripperManeuverType.straight;
+        break;
+    }
+    return TripperManeuverPayload(
+      distanceMeters: distanceMeters,
+      maneuverType: mapped,
+      nextStreet: nextStreet,
+      timestamp: timestamp ?? DateTime.now(),
+    );
+  }
 
   /// Representación en texto legible para la consola de diagnóstico de ESTELA.
   String toDiagnosticString() {

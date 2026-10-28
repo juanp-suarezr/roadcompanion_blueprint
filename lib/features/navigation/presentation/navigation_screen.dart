@@ -27,6 +27,7 @@ import '../infrastructure/services/nominatim_geocoding_service.dart';
 import '../infrastructure/services/osrm_routing_service.dart';
 import '../infrastructure/services/flutter_tts_voice_navigation_service.dart';
 import '../domain/entities/gpx_tracking_status.dart';
+import '../domain/entities/tripper_maneuver_payload.dart';
 import '../domain/services/tripper_ble_service.dart';
 import '../infrastructure/services/flutter_blue_plus_tripper_service.dart';
 import 'screens/tripper_diagnostic_screen.dart';
@@ -50,6 +51,8 @@ import 'widgets/saved_routes_sheet.dart';
 import 'widgets/schematic_road_view.dart';
 import 'widgets/session_summary_dialog.dart';
 import 'widgets/simulation_controls.dart';
+import 'widgets/navigation_simulation_panel.dart';
+import '../domain/services/navigation_simulator_service.dart';
 
 /// Modos de operación disponibles en la pantalla de navegación.
 enum NavigationScreenMode {
@@ -80,6 +83,7 @@ class NavigationScreen extends StatefulWidget {
   final TripperBleService? tripperBleService;
   final VoiceNavigationService? voiceService;
   final NavigationManeuverEngine? maneuverEngine;
+  final NavigationSimulatorService? simulatorService;
   final NavigationScreenMode? initialMode;
 
   const NavigationScreen({
@@ -94,6 +98,7 @@ class NavigationScreen extends StatefulWidget {
     this.tripperBleService,
     this.voiceService,
     this.maneuverEngine,
+    this.simulatorService,
     this.initialMode,
   });
 
@@ -112,6 +117,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   late final TripperBleService _tripperBleService;
   late final VoiceNavigationService _voiceService;
   late final NavigationManeuverEngine _maneuverEngine;
+  late final NavigationSimulatorService _simulatorService;
+  bool _ownsSimulatorService = false;
 
   ImportedRouteState? _localRouteState;
   late NavigationScreenMode _currentMode;
@@ -154,6 +161,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
         widget.tripperBleService ?? FlutterBluePlusTripperService();
     _voiceService = widget.voiceService ?? FlutterTtsVoiceNavigationService();
     _maneuverEngine = widget.maneuverEngine ?? NavigationManeuverEngine();
+
+    if (widget.simulatorService != null) {
+      _simulatorService = widget.simulatorService!;
+      _ownsSimulatorService = false;
+    } else {
+      _simulatorService = NavigationSimulatorService(
+        bleService: _tripperBleService,
+      );
+      _ownsSimulatorService = true;
+    }
 
     _currentMode = widget.initialMode ?? NavigationScreenMode.realMap;
 
@@ -219,6 +236,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void dispose() {
     _activeTracker?.removeListener(_onActiveTrackerProgress);
     _voiceService.dispose();
+    if (_ownsSimulatorService) {
+      _simulatorService.dispose();
+    }
     _gpsLocationSubscription?.cancel();
     _demoController.dispose();
     _activeTracker?.dispose();
@@ -439,6 +459,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
           distanceToManeuverMeters: step.distanceToManeuverMeters,
           currentSpeedKmh: pos.speedKmh ?? 0.0,
         );
+
+        // Puente reactivo hacia el display del Tripper Pod si el enlace BLE está activo
+        if (_tripperBleService.currentState.isReadyForNavigation) {
+          _tripperBleService.sendManeuver(
+            TripperManeuverPayload.fromManeuver(
+              type: step.activeManeuver.type,
+              distanceMeters: step.distanceToManeuverMeters.round(),
+              nextStreet: step.activeManeuver.roadName ?? '',
+            ),
+          );
+        }
       }
     }
 
@@ -507,6 +538,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _voiceService.stop();
     _voiceService.resetGuidance();
     _maneuverEngine.clear();
+    _tripperBleService.stopNavigation();
     _activeTracker?.stopTracking();
     _startListeningGps();
     setState(() {
@@ -570,6 +602,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await _voiceService.stop();
     _voiceService.resetGuidance();
     _maneuverEngine.clear();
+    await _tripperBleService.stopNavigation();
     _startListeningGps();
     if (!mounted) return;
 
@@ -710,6 +743,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                         activeTracker: _activeTracker,
                         bleService: _tripperBleService,
                         voiceService: _voiceService,
+                        simulatorService: _simulatorService,
                       ),
                     ),
                   );
@@ -1426,6 +1460,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
                     onStepForward: _demoController.stepForward,
                     onStepBackward: _demoController.stepBackward,
                     onReset: _demoController.resetSimulation,
+                  ),
+                  const SizedBox(height: 14.0),
+                  NavigationSimulationPanel(
+                    simulator: _simulatorService,
+                    bleService: _tripperBleService,
                   ),
                 ],
               );

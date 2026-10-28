@@ -99,11 +99,17 @@ class TripperDevice {
       confidence = 'Media';
       evidence =
           'Nombre concordante con Royal Enfield ("$trimmedName"). Se requiere conectar para inspeccionar servicios GATT.';
-    } else if (hasKnownSerialUuid || hasNxpMac) {
+    } else if (hasNxpMac) {
+      isCandidate = true;
+      confidence = 'Media';
+      evidence = cleanName.isNotEmpty
+          ? 'MAC NXP Semiconductor (00:60:37) detectada con nombre "$trimmedName". Candidato a Tripper Pod.'
+          : 'MAC NXP Semiconductor (00:60:37) detectada sin nombre anunciado. Candidato muy probable a Tripper Pod (paquete publicitario base).';
+    } else if (hasKnownSerialUuid) {
       confidence = 'Baja';
       evidence = cleanName.isNotEmpty
           ? 'Perfil serie/NXP detectado pero nombre ("$trimmedName") no asociado a Royal Enfield.'
-          : 'Perfil serie/NXP detectado en dispositivo sin nombre anunciado.';
+          : 'Perfil serie detectado en dispositivo sin nombre anunciado.';
     } else if (cleanName.isEmpty) {
       evidence =
           'Periférico BLE transmitiendo paquetes publicitarios sin nombre.';

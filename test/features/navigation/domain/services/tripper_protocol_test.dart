@@ -169,5 +169,53 @@ void main() {
       expect(compNorth[2], 0x41); // Modo compás
       expect(compNorth[14], 0x10); // Sector Norte
     });
+
+    test('Valida la trama exacta de maniobra de prueba recto 500m y su CRC (73 85)', () {
+      final pkt = TripperProtocol.buildNavPacket(
+        maneuver: TripperProtocol.maneuverStraight,
+        distanceMeters: 500,
+        nextManeuver: TripperProtocol.nextManeuverNone,
+      );
+      expect(pkt.length, 20);
+      expect(pkt[0], 0x10);
+      expect(pkt[1], 0x11);
+      expect(pkt[2], 0x09); // maneuverStraight
+      expect(pkt[3], 0x01); // 500 = 0x01F4
+      expect(pkt[4], 0xF4);
+      expect(pkt[5], 0x01); // metros
+      expect(pkt[6], 0x00); // intensidad diurna
+      expect(pkt[7], 0xFF); // sin segunda maniobra
+      expect(pkt[8], 0xFF);
+      expect(pkt[9], 0xFF);
+      expect(pkt[10], 0x41); // flag fijo
+      expect(pkt[11], 0xFF); // sin barra inferior
+      expect(pkt[12], 0xFF);
+      expect(pkt[13], 0xFF);
+      expect(pkt[14], 0x00);
+      expect(pkt[15], 0x00);
+      expect(pkt[16], 0x00);
+      expect(pkt[17], 0x00);
+      // CRC-16 esperado: 0x7385
+      expect(pkt[18], 0x73);
+      expect(pkt[19], 0x85);
+      expect(
+        TripperProtocol.toHexString(pkt),
+        '10 11 09 01 F4 01 00 FF FF FF 41 FF FF FF 00 00 00 00 73 85',
+      );
+    });
+
+    test('Valida la trama exacta de reloj a las 08:40 y su CRC (9C 4A)', () {
+      final pkt = TripperProtocol.buildSetTimePacket(8, 40, false);
+      expect(pkt.length, 20);
+      expect(pkt[0], 0x50);
+      expect(pkt[1], 0x08);
+      expect(pkt[2], 0x28); // 40 min = 0x28
+      expect(pkt[18], 0x9C);
+      expect(pkt[19], 0x4A);
+      expect(
+        TripperProtocol.toHexString(pkt),
+        '50 08 28 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 9C 4A',
+      );
+    });
   });
 }

@@ -128,6 +128,18 @@ class MockTripperBleService implements TripperBleService {
   String? get lastPacketSentHex => null;
 
   @override
+  DateTime? get lastNavPacketSentTime => null;
+
+  @override
+  String? get lastNavPacketSentHex => null;
+
+  @override
+  DateTime? get lastKeepAliveSentTime => null;
+
+  @override
+  bool get isLocalDisconnectRequested => false;
+
+  @override
   String? get lastTransmissionResult => null;
 
   @override
@@ -138,6 +150,15 @@ class MockTripperBleService implements TripperBleService {
 
   @override
   Future<bool> sendTestMessage() async => true;
+
+  @override
+  Future<bool> stopNavigation() async => true;
+
+  @override
+  bool get isNavScreenActive => false;
+
+  @override
+  bool get isTestManeuverActive => false;
 
   @override
   Future<bool> sendManeuver(TripperManeuverPayload maneuver) async => true;
@@ -442,6 +463,7 @@ void main() {
 
       expect(find.text('Voz lista'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Probar voz'));
       await tester.tap(find.text('Probar voz'));
       await tester.pumpAndSettle();
 

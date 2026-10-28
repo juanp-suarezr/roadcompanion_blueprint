@@ -14,9 +14,11 @@ import '../../domain/entities/tripper_gatt_info.dart';
 import '../../domain/services/tripper_ble_service.dart';
 import '../../domain/services/tripper_protocol.dart';
 import '../../domain/services/voice_navigation_service.dart';
+import '../../domain/services/navigation_simulator_service.dart';
 import '../../infrastructure/services/navigation_instruction_bridge.dart';
 import '../state/gpx_route_tracker.dart';
 import '../widgets/background_tracking_info_dialog.dart';
+import '../widgets/navigation_simulation_panel.dart';
 
 /// Pantalla de laboratorio y diagnóstico experimental para GPS en segundo plano,
 /// audio TTS y comunicación BLE con el Royal Enfield Tripper Pod.
@@ -25,6 +27,7 @@ class TripperDiagnosticScreen extends StatefulWidget {
   final TripperBleService bleService;
   final VoiceNavigationService? voiceService;
   final NavigationInstructionBridge? navigationBridge;
+  final NavigationSimulatorService? simulatorService;
   final bool autoCheckHardware;
 
   const TripperDiagnosticScreen({
@@ -33,6 +36,7 @@ class TripperDiagnosticScreen extends StatefulWidget {
     required this.bleService,
     this.voiceService,
     this.navigationBridge,
+    this.simulatorService,
     this.autoCheckHardware = true,
   });
 
@@ -66,6 +70,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
   StreamSubscription? _bridgeSub;
   Timer? _telemetryTimer;
 
+  // Simulador de Navegación Determinista
+  late final NavigationSimulatorService _simulator;
+  bool _ownsSimulator = false;
+
   // Estado de voz
   bool _isTestingVoice = false;
   String? _voiceTestResult;
@@ -96,6 +104,16 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         bleService: widget.bleService,
       );
       _ownsBridge = true;
+    }
+
+    if (widget.simulatorService != null) {
+      _simulator = widget.simulatorService!;
+      _ownsSimulator = false;
+    } else {
+      _simulator = NavigationSimulatorService(
+        bleService: widget.bleService,
+      );
+      _ownsSimulator = true;
     }
 
     _bridgeSub = _bridge.events.listen((_) {
@@ -155,6 +173,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
     _bridgeSub?.cancel();
     if (_ownsBridge) {
       _bridge.dispose();
+    }
+    if (_ownsSimulator) {
+      _simulator.dispose();
     }
     _adapterStateSub?.cancel();
     _errorSub?.cancel();
@@ -344,6 +365,23 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
         ),
       );
       return;
+    }
+
+    if (widget.autoCheckHardware) {
+      try {
+        final gpsActive = await Geolocator.isLocationServiceEnabled();
+        if (!gpsActive && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Aviso: La Ubicación (GPS) está apagada. Enciéndela si tu versión de Android requiere GPS activo para escaneo BLE.',
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      } catch (_) {}
     }
 
     final isAvail = await widget.bleService.isBluetoothAvailable();
@@ -906,7 +944,9 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isReady
-                      ? AppColors.primaryGold
+                      ? (widget.bleService.isTestManeuverActive
+                          ? Colors.orangeAccent
+                          : AppColors.primaryGold)
                       : Colors.white12,
                   foregroundColor: Colors.black,
                   minimumSize: const Size(0, 38),
@@ -914,21 +954,31 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                icon: const Icon(Icons.navigation_rounded, size: 16),
-                label: const Text(
-                  'Enviar maniobra prueba (500m recto)',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                icon: Icon(
+                  widget.bleService.isTestManeuverActive
+                      ? Icons.stop_circle_rounded
+                      : Icons.navigation_rounded,
+                  size: 16,
+                ),
+                label: Text(
+                  widget.bleService.isTestManeuverActive
+                      ? 'Detener prueba pantalla (modo reposo)'
+                      : 'Enviar maniobra prueba (500m recto con refresco 2s)',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                 ),
                 onPressed: isReady
                     ? () async {
                         final ok = await widget.bleService.sendTestMessage();
                         if (mounted) {
+                          setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
                                 ok
-                                    ? 'Maniobra de prueba enviada al Tripper Pod.'
-                                    : 'Fallo al transmitir maniobra de prueba.',
+                                    ? (widget.bleService.isTestManeuverActive
+                                        ? 'Prueba iniciada: Maniobra 500m recto en pantalla activa (refresco cada 2s para evitar watchdog).'
+                                        : 'Prueba finalizada: Tramas de pantalla detenidas. Enlace BLE en reposo con PING_FW.')
+                                    : 'Fallo al procesar maniobra de prueba.',
                               ),
                               backgroundColor: ok
                                   ? Colors.green
@@ -1305,6 +1355,11 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
             _buildBleSection(),
             const SizedBox(height: 14),
             _buildManualTestingSection(),
+            const SizedBox(height: 14),
+            NavigationSimulationPanel(
+              simulator: _simulator,
+              bleService: widget.bleService,
+            ),
             const SizedBox(height: 14),
             _buildWazeBridgeMonitorSection(),
             const SizedBox(height: 14),

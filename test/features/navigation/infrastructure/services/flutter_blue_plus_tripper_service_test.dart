@@ -82,6 +82,9 @@ void main() {
         expect(report, contains('INFORME DE DIAGNÓSTICO BLE — RESTELAR'));
         expect(report, contains('Estado de conexión: idle'));
         expect(report, contains('Dispositivos descubiertos (0)'));
+        expect(report, contains('Última trama navegación:'));
+        expect(report, contains('Último keepalive (PING_FW):'));
+        expect(report, contains('Desconexión local solicitada: false'));
         expect(report, contains('REGISTRO COMPLETO DE EVENTOS'));
         expect(report, contains('=== FIN DEL INFORME ==='));
         // No contiene contraseñas ni tokens
@@ -90,5 +93,42 @@ void main() {
         expect(report.contains('secret'), isFalse);
       },
     );
+
+    test('Telemetry getters se inicializan con valores por defecto seguros', () {
+      final service = FlutterBluePlusTripperService();
+      expect(service.lastNavPacketSentTime, isNull);
+      expect(service.lastNavPacketSentHex, isNull);
+      expect(service.lastKeepAliveSentTime, isNull);
+      expect(service.isLocalDisconnectRequested, isFalse);
+      expect(service.isNavScreenActive, isFalse);
+      expect(service.isTestManeuverActive, isFalse);
+    });
+
+    test('stopNavigation limpia flags y emite logs de solicitud y purga', () async {
+      final service = FlutterBluePlusTripperService();
+      final result = await service.stopNavigation();
+      expect(result, isFalse); // No conectado
+      expect(service.isNavScreenActive, isFalse);
+      expect(service.isTestManeuverActive, isFalse);
+      expect(
+        service.diagnosticLogs.any((l) => l.contains('[NAV-STOP-REQ]')),
+        isTrue,
+      );
+      expect(
+        service.diagnosticLogs.any((l) => l.contains('[NAV-STOP-PURGE]')),
+        isTrue,
+      );
+    });
+
+    test('disconnect registra solicitud local explícita en logs', () async {
+      final service = FlutterBluePlusTripperService();
+      await service.disconnect();
+      expect(
+        service.diagnosticLogs.any(
+          (l) => l.contains('[BLE-DISCONNECT-LOCAL-REQ]'),
+        ),
+        isTrue,
+      );
+    });
   });
 }

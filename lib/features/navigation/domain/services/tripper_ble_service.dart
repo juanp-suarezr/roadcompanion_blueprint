@@ -64,8 +64,30 @@ abstract class TripperBleService {
   /// Envía el PIN de emparejamiento ingresado por el usuario (CMD 0x20).
   Future<bool> sendPin(String pin) async => false;
 
+  /// Detiene la visualización de navegación en el Tripper Pod (cancela el refresco continuo de pantalla)
+  /// y mantiene la conexión BLE activa en modo reposo con PING_FW. No fuerza desconexión local.
+  Future<bool> stopNavigation() async => false;
+
+  /// Indica si el Pod está en modo pantalla activa de navegación recibiendo refrescos periódicos (watchdog 2s).
+  bool get isNavScreenActive => false;
+
+  /// Indica si la maniobra de prueba en pantalla está activa.
+  bool get isTestManeuverActive => false;
+
   /// Última trama transmitida en formato hexadecimal legible (ej. "10 11 15 00 FA 01 ...").
   String? get lastPacketSentHex => null;
+
+  /// Timestamp de la última trama de navegación (0x10 0x11) transmitida.
+  DateTime? get lastNavPacketSentTime => null;
+
+  /// Última trama de navegación (0x10 0x11) transmitida en hexadecimal.
+  String? get lastNavPacketSentHex => null;
+
+  /// Timestamp del último paquete keepalive (PING_FW 0x03 0x00) transmitido.
+  DateTime? get lastKeepAliveSentTime => null;
+
+  /// Indica si la última solicitud de desconexión fue iniciada localmente por la app/usuario.
+  bool get isLocalDisconnectRequested => false;
 
   /// Resultado o confirmación de la última transmisión efectuada.
   String? get lastTransmissionResult => null;

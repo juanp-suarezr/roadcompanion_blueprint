@@ -12,7 +12,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Bluetooth Low Energy (Android 12+ API 31+) -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Bluetooth compatibilidad heredada (Android 11 y anteriores API <= 30) -->

@@ -44,6 +44,15 @@ class _FakeBleService implements TripperBleService {
   Future<bool> probeGattOnly(TripperDevice device) async => true;
 
   @override
+  Future<bool> stopNavigation() async => true;
+
+  @override
+  bool get isNavScreenActive => false;
+
+  @override
+  bool get isTestManeuverActive => false;
+
+  @override
   Future<void> cancelPendingConnection() async {}
 
   @override
@@ -101,6 +110,18 @@ class _FakeBleService implements TripperBleService {
 
   @override
   String? get lastPacketSentHex => null;
+
+  @override
+  DateTime? get lastNavPacketSentTime => null;
+
+  @override
+  String? get lastNavPacketSentHex => null;
+
+  @override
+  DateTime? get lastKeepAliveSentTime => null;
+
+  @override
+  bool get isLocalDisconnectRequested => false;
 
   @override
   String? get lastScanError => null;
