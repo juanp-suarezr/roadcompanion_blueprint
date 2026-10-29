@@ -16,6 +16,7 @@ class _FakeSimulatorBleService implements TripperBleService {
   final List<List<int>> sentPackets = [];
   bool shouldFailSend = false;
   int stopNavigationCalls = 0;
+  int clearActiveNavPacketCalls = 0;
   int disconnectCalls = 0;
 
   void setMockState(TripperConnectionState state) {
@@ -36,6 +37,11 @@ class _FakeSimulatorBleService implements TripperBleService {
   Future<bool> stopNavigation() async {
     stopNavigationCalls++;
     return true;
+  }
+
+  @override
+  void clearActiveNavPacket({String? reason}) {
+    clearActiveNavPacketCalls++;
   }
 
   @override

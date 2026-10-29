@@ -47,6 +47,9 @@ class _FakeBleService implements TripperBleService {
   Future<bool> stopNavigation() async => true;
 
   @override
+  void clearActiveNavPacket({String? reason}) {}
+
+  @override
   bool get isNavScreenActive => false;
 
   @override

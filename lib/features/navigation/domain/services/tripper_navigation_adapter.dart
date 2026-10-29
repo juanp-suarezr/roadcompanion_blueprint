@@ -161,6 +161,8 @@ class TripperNavigationAdapter {
   TripperNavAdaptationResult adaptNativeManeuver({
     required ManeuverType maneuverType,
     required int distanceMeters,
+    int nextManeuverCode = TripperProtocol.nextManeuverNone,
+    int nextDistanceMeters = -1,
     int? roundaboutExit,
     int? totalDistanceMeters,
     int? etaMinutes,
@@ -192,6 +194,8 @@ class TripperNavigationAdapter {
     final packet = TripperProtocol.buildNavPacket(
       maneuver: maneuverCode,
       distanceMeters: distanceMeters,
+      nextManeuver: nextManeuverCode,
+      nextDistanceMeters: nextDistanceMeters,
       bottomInfo: bottomInfo,
       nightMode: night,
     );

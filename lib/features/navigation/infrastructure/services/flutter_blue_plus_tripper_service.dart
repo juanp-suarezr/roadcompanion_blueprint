@@ -890,6 +890,18 @@ class FlutterBluePlusTripperService implements TripperBleService {
               description:
                   'REFRESH_PANTALLA (${_activeNavDescription ?? "maniobra activa"})',
             );
+          } else if (_isNavScreenActive) {
+            // TRANSICIÓN / RESGUARDO DE WATCHDOG:
+            // Si la sesión de navegación sigue activa en el teléfono pero no hay paquete asignado,
+            // PING_FW provocaría que el firmware del Pod cierre el enlace BLE a los 5s (status=19).
+            // Se emite la trama segura de transición neutra (0x1C Re-routing) para mantener vivo el watchdog.
+            final fallbackPacket = TripperProtocol.buildSafeTransitionPacket();
+            _activeNavPacket = fallbackPacket;
+            _activeNavDescription = 'REFRESH_SEGURIDAD_TRANSICION (0x1C)';
+            await _enqueuePacket(
+              fallbackPacket,
+              description: 'REFRESH_PANTALLA (seguridad transición 0x1C)',
+            );
           } else {
             // MODO RELOJ NATIVO / REPOSO:
             // PING_FW (0x03 00...) mantiene el enlace BLE vivo indefinidamente en reposo.
@@ -1079,6 +1091,19 @@ class FlutterBluePlusTripperService implements TripperBleService {
       '(Resultado PING_FW inicial: ${pingOk ? "OK" : "FALLO"}).',
     );
     return true;
+  }
+
+  @override
+  void clearActiveNavPacket({String? reason}) {
+    if (_activeNavPacket != null) {
+      _log(
+        '[CLEAR_NAV] Limpiando trama activa de navegación (0x10 0x11): ${reason ?? "maniobra no transmitible / obsoleta"}.',
+      );
+      _activeNavPacket = null;
+      _activeNavDescription = null;
+      _isNavScreenActive = false;
+      _isTestManeuverActive = false;
+    }
   }
 
   @override

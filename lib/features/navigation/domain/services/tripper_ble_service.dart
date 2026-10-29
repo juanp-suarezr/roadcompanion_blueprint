@@ -68,6 +68,10 @@ abstract class TripperBleService {
   /// y mantiene la conexión BLE activa en modo reposo con PING_FW. No fuerza desconexión local.
   Future<bool> stopNavigation() async => false;
 
+  /// Limpia la trama activa de navegación (0x10 0x11) para evitar retransmitir tramas obsoletas
+  /// cuando la maniobra actual no está validada o el metraje ha expirado.
+  void clearActiveNavPacket({String? reason}) {}
+
   /// Indica si el Pod está en modo pantalla activa de navegación recibiendo refrescos periódicos (watchdog 2s).
   bool get isNavScreenActive => false;
 

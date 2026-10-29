@@ -192,17 +192,17 @@ class TripperProtocol {
   static int distanceIntensity(int meters, bool night) {
     int v;
     if (meters <= 10) {
-      v = 0x50;
+      v = 0x50; // Punto de giro: 4 barras / destello / ejecución
     } else if (meters <= 20) {
-      v = 0x40;
+      v = 0x40; // 4 barras
     } else if (meters <= 45) {
-      v = 0x30;
+      v = 0x30; // 3 barras
     } else if (meters <= 70) {
-      v = 0x20;
-    } else if (meters <= 95) {
-      v = 0x10;
+      v = 0x20; // 2 barras
+    } else if (meters < 100) {
+      v = 0x10; // 1 barra (< 100m)
     } else {
-      v = 0x00;
+      v = 0x00; // Sin barras / sólido (>= 100m)
     }
     return v + (night ? 1 : 0);
   }
@@ -384,6 +384,58 @@ class TripperProtocol {
   }
 
 
+  /// Construye una trama de pantalla de navegación segura (0x10 0x11) para transiciones o pasos
+  /// no mapeados, utilizando el código neutral de recalculando/en tránsito (0x1C) para evitar
+  /// la desconexión del watchdog del hardware (~5s) sin falsear flechas direccionales erróneas.
+  static Uint8List buildSafeTransitionPacket({
+    int distanceMeters = 0,
+    bool nightMode = false,
+  }) {
+    return buildNavPacket(
+      maneuver: maneuverReRouting,
+      distanceMeters: distanceMeters,
+      nightMode: nightMode,
+    );
+  }
+
+  /// Retorna el nivel de certeza y soporte físico de un opcode en el Tripper Pod.
+  static TripperOpcodeStatus getOpcodeStatus(int opcode) {
+    switch (opcode) {
+      case maneuverStraight: // 0x09
+      case maneuverDepart: // 0x3C
+      case maneuverDestination: // 0x00
+      case maneuverTurnRight: // 0x15 (confirmado físicamente en prueba: flecha roja, barras y destello)
+        return TripperOpcodeStatus.confirmedPhysical;
+
+      case maneuverTurnLeft: // 0x14
+      case maneuverSharpLeft: // 0x16
+      case maneuverSharpRight: // 0x17
+      case maneuverSlightLeft: // 0x18
+      case maneuverSlightRight: // 0x19
+      case maneuverUTurnClockwise: // 0x1A
+      case maneuverUTurnCounterClockwise: // 0x3D
+      case maneuverExitKeepRight: // 0x27
+      case maneuverExitKeepLeft: // 0x28
+      case maneuverOffRampSlightRight: // 0x2D
+      case maneuverOffRampSlightLeft: // 0x2E
+      case maneuverRoundaboutBase: // 0x0A
+      case maneuverReRouting: // 0x1C
+      case maneuverRouteStarted: // 0x45
+        return TripperOpcodeStatus.documented;
+
+      case maneuverMergeRight: // 0x03
+      case maneuverMergeLeft: // 0x04
+      case maneuverForkRight: // 0x05
+      case maneuverForkLeft: // 0x06
+      case maneuverOffRampRight: // 0x07
+      case maneuverOffRampLeft: // 0x08
+        return TripperOpcodeStatus.probable;
+
+      default:
+        return TripperOpcodeStatus.experimental;
+    }
+  }
+
   /// Formatea un paquete de bytes como cadena hexadecimal limpia con espacios (ej. "21 00 00 ... 40 45").
   static String toHexString(List<int> bytes) {
     return bytes
@@ -391,3 +443,22 @@ class TripperProtocol {
         .join(' ');
   }
 }
+
+/// Nivel de certeza y soporte físico de un código de maniobra en el hardware del Tripper Pod.
+enum TripperOpcodeStatus {
+  /// Opcode verificado visual y funcionalmente en el Tripper Pod físico de la Meteor 350.
+  confirmedPhysical('CONFIRMADO_FISICAMENTE'),
+
+  /// Opcode formalmente documentado en el protocolo de ingeniería inversa (WazeTripper / catálogo).
+  documented('DOCUMENTADO'),
+
+  /// Opcode inferido consistente entre aplicaciones de terceros pero sin prueba directa en este Pod.
+  probable('PROBABLE'),
+
+  /// Opcode teórico, experimental o reservado sin validación garantizada.
+  experimental('EXPERIMENTAL');
+
+  final String label;
+  const TripperOpcodeStatus(this.label);
+}
+

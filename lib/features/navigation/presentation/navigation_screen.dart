@@ -7,6 +7,7 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/storm_badge.dart';
 import '../../../../domain/entities/coordinates.dart';
 import '../../../../domain/entities/maneuver.dart';
+import '../../../../domain/entities/route_progress.dart';
 import '../../../../domain/services/route_progress_calculator.dart';
 import '../domain/entities/calculated_route.dart';
 import '../domain/entities/destination.dart';
@@ -1427,14 +1428,51 @@ class _NavigationScreenState extends State<NavigationScreen> {
           const SizedBox(height: 14.0),
 
           AnimatedBuilder(
-            animation: _demoController,
+            animation: Listenable.merge([_demoController, _simulatorService]),
             builder: (context, _) {
-              final progress = _demoController.currentProgress;
-              final maneuver = _demoController.currentManeuver;
+              final isSimulatorActive =
+                  _simulatorService.isRunning ||
+                  _simulatorService.isPaused ||
+                  _simulatorService.isCompleted;
+
+              final maneuver =
+                  isSimulatorActive
+                      ? _simulatorService.currentStep.maneuver
+                      : _demoController.currentManeuver;
               final distanceToManeuver =
-                  _demoController.distanceToManeuverMeters;
+                  isSimulatorActive
+                      ? _simulatorService.currentVirtualDistanceMeters
+                      : _demoController.distanceToManeuverMeters;
+              final geometry =
+                  isSimulatorActive
+                      ? _simulatorService.geometry
+                      : _demoController.geometry;
+              final progressFraction =
+                  isSimulatorActive
+                      ? (_simulatorService.progressPercentage / 100.0).clamp(
+                        0.0,
+                        1.0,
+                      )
+                      : _demoController.stepFraction;
               final totalDistance =
-                  _demoController.routePlan.totalDistanceMeters;
+                  isSimulatorActive
+                      ? _simulatorService.totalRouteDistanceMeters
+                      : _demoController.routePlan.totalDistanceMeters;
+              final progress =
+                  isSimulatorActive
+                      ? RouteProgress(
+                        distanceTraveledMeters:
+                            _simulatorService.traveledDistanceMeters,
+                        remainingDistanceMeters:
+                            _simulatorService.totalRemainingDistanceMeters,
+                        progressPercentage:
+                            _simulatorService.progressPercentage,
+                        projectedPoint:
+                            _simulatorService.currentVirtualPosition,
+                        distanceToRouteMeters: 0.0,
+                        closestSegmentIndex: 0,
+                      )
+                      : _demoController.currentProgress;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1445,8 +1483,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   ),
                   const SizedBox(height: 14.0),
                   SchematicRoadView(
-                    geometry: _demoController.geometry,
-                    progressFraction: _demoController.stepFraction,
+                    geometry: geometry,
+                    progressFraction: progressFraction,
                   ),
                   const SizedBox(height: 14.0),
                   ProgressStatsBar(
