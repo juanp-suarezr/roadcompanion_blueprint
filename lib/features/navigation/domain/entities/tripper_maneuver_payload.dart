@@ -6,11 +6,15 @@ enum TripperManeuverType {
   straight,
   turnLeft,
   turnRight,
+  sharpLeft,
+  sharpRight,
   slightLeft,
   slightRight,
   uTurn,
   roundabout,
+  depart,
   destinationReached,
+  unknown,
 }
 
 /// Contenedor desacoplado de una instrucción de navegación para el Tripper Pod.
@@ -50,12 +54,16 @@ class TripperManeuverPayload {
     TripperManeuverType mapped;
     switch (type) {
       case ManeuverType.left:
-      case ManeuverType.sharpLeft:
         mapped = TripperManeuverType.turnLeft;
         break;
+      case ManeuverType.sharpLeft:
+        mapped = TripperManeuverType.sharpLeft;
+        break;
       case ManeuverType.right:
-      case ManeuverType.sharpRight:
         mapped = TripperManeuverType.turnRight;
+        break;
+      case ManeuverType.sharpRight:
+        mapped = TripperManeuverType.sharpRight;
         break;
       case ManeuverType.slightLeft:
         mapped = TripperManeuverType.slightLeft;
@@ -73,9 +81,13 @@ class TripperManeuverPayload {
         mapped = TripperManeuverType.destinationReached;
         break;
       case ManeuverType.depart:
+        mapped = TripperManeuverType.depart;
+        break;
       case ManeuverType.straight:
-      case ManeuverType.unknown:
         mapped = TripperManeuverType.straight;
+        break;
+      case ManeuverType.unknown:
+        mapped = TripperManeuverType.unknown;
         break;
     }
     return TripperManeuverPayload(
@@ -115,8 +127,17 @@ class TripperManeuverPayload {
     return bytes;
   }
 
+  /// Indica si la maniobra tiene representación válida en el hardware Tripper Pod.
+  bool get isSupported =>
+      maneuverType != TripperManeuverType.unknown && distanceMeters >= 0;
+
   /// Genera la trama real de 20 bytes del protocolo oficial del Tripper Pod (CMD_NAVIGATE).
   List<int> toProtocolPacket({bool nightMode = false}) {
+    if (!isSupported) {
+      throw StateError(
+        'No se puede construir trama BLE para una maniobra desconocida o sin distancia válida.',
+      );
+    }
     final code = _mapToProtocolManeuverCode(maneuverType);
     return TripperProtocol.buildNavPacket(
       maneuver: code,
@@ -133,6 +154,10 @@ class TripperManeuverPayload {
         return TripperProtocol.maneuverTurnLeft;
       case TripperManeuverType.turnRight:
         return TripperProtocol.maneuverTurnRight;
+      case TripperManeuverType.sharpLeft:
+        return TripperProtocol.maneuverSharpLeft;
+      case TripperManeuverType.sharpRight:
+        return TripperProtocol.maneuverSharpRight;
       case TripperManeuverType.slightLeft:
         return TripperProtocol.maneuverSlightLeft;
       case TripperManeuverType.slightRight:
@@ -141,18 +166,25 @@ class TripperManeuverPayload {
         return TripperProtocol.maneuverUTurnCounterClockwise;
       case TripperManeuverType.roundabout:
         return TripperProtocol.maneuverRoundaboutBase;
+      case TripperManeuverType.depart:
+        return TripperProtocol.maneuverDepart;
       case TripperManeuverType.destinationReached:
         return TripperProtocol.maneuverDestination;
+      case TripperManeuverType.unknown:
+        throw StateError('TripperManeuverType.unknown no tiene opcode BLE.');
     }
   }
 
   int _mapManeuverCode(TripperManeuverType type) {
     switch (type) {
       case TripperManeuverType.straight:
+      case TripperManeuverType.depart:
         return 0x01;
       case TripperManeuverType.turnLeft:
+      case TripperManeuverType.sharpLeft:
         return 0x02;
       case TripperManeuverType.turnRight:
+      case TripperManeuverType.sharpRight:
         return 0x03;
       case TripperManeuverType.slightLeft:
         return 0x04;
@@ -164,6 +196,8 @@ class TripperManeuverPayload {
         return 0x07;
       case TripperManeuverType.destinationReached:
         return 0x08;
+      case TripperManeuverType.unknown:
+        return 0x00;
     }
   }
 }

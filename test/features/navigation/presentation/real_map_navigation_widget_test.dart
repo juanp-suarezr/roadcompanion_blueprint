@@ -50,13 +50,26 @@ class MockGeocodingService implements GeocodingService {
 class MockRoutingService implements RoutingService {
   final CalculatedRoute routeToReturn;
   final List<CalculatedRoute>? routesToReturn;
-  MockRoutingService(this.routeToReturn, {this.routesToReturn});
+  Future<CalculatedRoute> Function({
+    required Coordinates origin,
+    required Coordinates destination,
+  })?
+  onCalculateRoute;
+
+  MockRoutingService(
+    this.routeToReturn, {
+    this.routesToReturn,
+    this.onCalculateRoute,
+  });
 
   @override
   Future<CalculatedRoute> calculateRoute({
     required Coordinates origin,
     required Coordinates destination,
   }) async {
+    if (onCalculateRoute != null) {
+      return onCalculateRoute!(origin: origin, destination: destination);
+    }
     return routeToReturn;
   }
 
@@ -465,6 +478,193 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('INICIAR RUTA (ACCESO RESTRINGIDO)'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Resiliencia de recálculo: conserva ruta ante error/timeout, descarta respuesta antigua fuera de orden y limpia maniobras obsoletas al aceptar nueva ruta',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final screenKey = GlobalKey<NavigationScreenState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ImportedRouteScope(
+            routeState: ImportedRouteState(),
+            child: NavigationScreen(
+              key: screenKey,
+              locationService: mockLocationService,
+              sessionRepository: mockSessionRepo,
+              geocodingService: mockGeocodingService,
+              routingService: mockRoutingService,
+              initialMode: NavigationScreenMode.realMap,
+              routeRequestTimeout: const Duration(milliseconds: 120),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Seleccionar destino e iniciar navegación
+      await tester.tap(find.text('Buscar destino o municipio...'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Nevado');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Nevado del Ruiz'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('INICIAR NAVEGACIÓN'));
+      await tester.pump();
+
+      final state = screenKey.currentState!;
+      final initialVersion = state.activeRouteVersion;
+      expect(state.calculatedRoute?.summary, equals('por Vía al Nevado'));
+
+      // 1. Error en recálculo: conserva la ruta vigente, muestra aviso y NO queda en recalculando
+      mockRoutingService.onCalculateRoute =
+          ({required origin, required destination}) async {
+            throw Exception('Fallo de red OSRM');
+          };
+
+      await state.triggerOffRouteRecalculation(
+        Coordinates(5.050, -75.500),
+        force: true,
+      );
+      await tester.pump();
+
+      expect(state.isRecalculatingRoute, isFalse);
+      expect(state.calculatedRoute?.summary, equals('por Vía al Nevado'));
+      expect(state.activeRouteVersion, equals(initialVersion));
+      expect(
+        state.recalculationErrorMessage,
+        contains('Conservando ruta activa'),
+      );
+      expect(
+        find.textContaining('No se pudo recalcular la ruta'),
+        findsOneWidget,
+      );
+
+      // 2. Timeout en recálculo: aborta limpiamente tras routeRequestTimeout y conserva ruta previa
+      final neverCompleter = Completer<CalculatedRoute>();
+      mockRoutingService.onCalculateRoute =
+          ({required origin, required destination}) {
+            return neverCompleter.future;
+          };
+
+      final timeoutFuture = state.triggerOffRouteRecalculation(
+        Coordinates(5.048, -75.498),
+        force: true,
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      await timeoutFuture;
+      await tester.pump();
+
+      expect(state.isRecalculatingRoute, isFalse);
+      expect(state.calculatedRoute?.summary, equals('por Vía al Nevado'));
+
+      // 3. Dos recálculos seguidos donde la respuesta más antigua llega última:
+      // La respuesta antigua (Ruta Obsoleta A) NO debe sobrescribir la más reciente (Ruta Nueva B)
+      final completerOld = Completer<CalculatedRoute>();
+      final completerNew = Completer<CalculatedRoute>();
+      int callCount = 0;
+
+      final obsoleteRouteA = sampleRoute.copyWith(
+        summary: 'Ruta Obsoleta A',
+        routePlan: RoutePlan(
+          origin: Coordinates(5.040, -75.480),
+          destination: Coordinates(4.895, -75.322),
+          estimatedDuration: const Duration(hours: 2),
+          geometry: [Coordinates(5.040, -75.480), Coordinates(4.895, -75.322)],
+          totalDistanceMeters: 50000.0,
+          maneuvers: [
+            Maneuver(
+              instructionText: 'Maniobra Obsoleta A',
+              type: ManeuverType.left,
+              location: Coordinates(5.040, -75.480),
+              distanceMeters: 500.0,
+            ),
+          ],
+        ),
+      );
+
+      final freshRouteB = sampleRoute.copyWith(
+        summary: 'Ruta Nueva B Validada',
+        routePlan: RoutePlan(
+          origin: Coordinates(5.030, -75.470),
+          destination: Coordinates(4.895, -75.322),
+          estimatedDuration: const Duration(hours: 1, minutes: 10),
+          geometry: [
+            Coordinates(5.030, -75.470),
+            Coordinates(4.950, -75.390),
+            Coordinates(4.895, -75.322),
+          ],
+          totalDistanceMeters: 35000.0,
+          maneuvers: [
+            Maneuver(
+              instructionText: 'Gira a la derecha por Ruta Nueva B',
+              type: ManeuverType.right,
+              location: Coordinates(5.030, -75.470),
+              distanceMeters: 300.0,
+            ),
+          ],
+        ),
+      );
+
+      mockRoutingService.onCalculateRoute =
+          ({required origin, required destination}) {
+            callCount++;
+            return callCount == 1 ? completerOld.future : completerNew.future;
+          };
+
+      final futureOld = state.triggerOffRouteRecalculation(
+        Coordinates(5.040, -75.480),
+        force: true,
+      );
+      final futureNew = state.triggerOffRouteRecalculation(
+        Coordinates(5.030, -75.470),
+        force: true,
+      );
+
+      // Primero llega la más reciente (Ruta Nueva B)
+      completerNew.complete(freshRouteB);
+      await tester.pump();
+      await futureNew;
+      await tester.pump();
+
+      expect(state.calculatedRoute?.summary, equals('Ruta Nueva B Validada'));
+      expect(state.isRecalculatingRoute, isFalse);
+
+      // Luego llega la respuesta antigua (Ruta Obsoleta A): debe ser descartada
+      completerOld.complete(obsoleteRouteA);
+      await tester.pump();
+      await futureOld;
+      await tester.pump();
+
+      expect(state.calculatedRoute?.summary, equals('Ruta Nueva B Validada'));
+      expect(state.recalculationErrorMessage, isNull);
+
+      // 4. Verificar que las maniobras antiguas fueron limpiadas y reemplazadas por las de Ruta Nueva B
+      final activeStep = state.maneuverEngine.resolveStep(
+        currentCoordinates: Coordinates(5.030, -75.470),
+        progress: null,
+      );
+      expect(activeStep, isNotNull);
+      expect(
+        activeStep!.activeManeuver.instructionText,
+        equals('Gira a la derecha por Ruta Nueva B'),
+      );
+      expect(
+        state.currentCurvatureInfo?.routeVersion,
+        equals(state.activeRouteVersion),
+      );
+
+      // Desmontar widget para liberar timers del tracker activo
+      await tester.pumpWidget(const SizedBox());
     },
   );
 }

@@ -4,6 +4,8 @@ import '../../../../domain/entities/maneuver_type.dart';
 import '../../../navigation/domain/entities/road_curvature.dart';
 import '../../../navigation/domain/services/navigation_diagnostic_logger.dart';
 import '../../../navigation/domain/services/navigation_source.dart';
+import '../../../navigation/domain/services/tripper_ble_service.dart';
+import '../../../navigation/domain/services/tripper_navigation_adapter.dart';
 import '../../domain/entities/bridge_instruction_status.dart';
 import '../../domain/entities/bridge_navigation_instruction.dart';
 import '../../domain/entities/bridge_source_type.dart';
@@ -14,11 +16,14 @@ import '../../infrastructure/services/bridge_native_channel.dart';
 ///
 /// Mantiene en memoria volátil (exclusiva de la sesión activa) los últimos eventos
 /// capturados, filtra por la fuente seleccionada (`Waze` o `Google Maps`), gestiona
-/// la máquina de estados explícita [CompanionNavigationStateMachine] y el estado del
+/// la máquina de estados explícita [CompanionNavigationStateMachine], adapta y transmite
+/// las maniobras válidas hacia [TripperBleService] y administra el estado del
 /// permiso de escucha del sistema Android.
 class BridgeDiagnosticController extends ChangeNotifier {
   final BridgeNativeChannel _nativeChannel;
   final NavigationInstructionParser _parser;
+  final TripperNavigationAdapter _adapter;
+  final TripperBleService? _bleService;
   final CompanionNavigationStateMachine _stateMachine;
 
   BridgePermissionStatus _permissionStatus = BridgePermissionStatus.unknown;
@@ -29,19 +34,25 @@ class BridgeDiagnosticController extends ChangeNotifier {
   DateTime? _lastEventTimestamp;
   final List<BridgeNavigationInstruction> _sessionHistory = [];
   String? _errorMessage;
+  bool _lastTransmittedToTripper = false;
 
   StreamSubscription<BridgeNotificationEvent>? _subscription;
 
   BridgeDiagnosticController({
     BridgeNativeChannel? nativeChannel,
     NavigationInstructionParser? parser,
+    TripperNavigationAdapter? adapter,
+    TripperBleService? bleService,
     SelectedNavigationSourceType initialSource =
         SelectedNavigationSourceType.waze,
     bool strictSourceFilter = false,
   }) : _nativeChannel = nativeChannel ?? BridgeNativeChannel(),
        _parser = parser ?? const NavigationInstructionParser(),
+       _adapter = adapter ?? const TripperNavigationAdapter(),
+       _bleService = bleService,
        _strictSourceFilter = strictSourceFilter,
        _stateMachine = CompanionNavigationStateMachine(
+         bleService: bleService,
          initialSource: switch (initialSource) {
            SelectedNavigationSourceType.waze => const WazeNavigationSource(),
            SelectedNavigationSourceType.googleMaps =>
@@ -58,6 +69,7 @@ class BridgeDiagnosticController extends ChangeNotifier {
   List<BridgeNavigationInstruction> get sessionHistory =>
       List.unmodifiable(_sessionHistory);
   String? get errorMessage => _errorMessage;
+  bool get lastTransmittedToTripper => _lastTransmittedToTripper;
 
   SelectedNavigationSourceType get selectedSource =>
       _stateMachine.selectedSourceType;
@@ -162,11 +174,14 @@ class BridgeDiagnosticController extends ChangeNotifier {
   }
 
   void _handleEvent(BridgeNotificationEvent event) {
-    final targetBridgeSource = selectedSource.bridgeSourceType;
-    if (_strictSourceFilter &&
-        targetBridgeSource != null &&
-        event.source != targetBridgeSource) {
-      return;
+    if (_strictSourceFilter) {
+      if (selectedSource == SelectedNavigationSourceType.internal) {
+        return;
+      }
+      final targetBridgeSource = selectedSource.bridgeSourceType;
+      if (targetBridgeSource != null && event.source != targetBridgeSource) {
+        return;
+      }
     }
 
     if (!_strictSourceFilter) {
@@ -191,8 +206,8 @@ class BridgeDiagnosticController extends ChangeNotifier {
       stage: DiagnosticPipelineStage.l1AndroidEvent,
       source: event.source.displayName,
       summary: event.isRemoved
-          ? 'Notificación eliminada (isRemoved=true)'
-          : 'title="${event.title ?? ""}" | text="${event.text ?? ""}"',
+          ? 'pkg=${event.source.packageName} | Notificación eliminada (isRemoved=true)'
+          : 'pkg=${event.source.packageName} | title="${event.title ?? ""}" | text="${event.text ?? ""}" | extras=${event.availableExtras} | remoteViews=${event.remoteViewsTexts}',
       timestamp: event.timestamp,
     );
 
@@ -207,20 +222,34 @@ class BridgeDiagnosticController extends ChangeNotifier {
               rawText: '',
               receivedAt: event.timestamp,
               status: BridgeInstructionStatus.stale,
+              discardReason: 'Notificación retirada o ruta cancelada',
             );
       _lastInstruction = stale;
       _lastEventTimestamp = event.timestamp;
+      _lastTransmittedToTripper = false;
       _stateMachine.onExternalInstruction(stale);
+      _bleService?.clearActiveNavPacket(
+        reason: 'Notificación de ${event.source.displayName} eliminada',
+      );
+      if (_bleService != null &&
+          _bleService.currentState.isReadyForNavigation) {
+        _bleService.stopNavigation();
+      }
       _addToHistory(stale);
       notifyListeners();
       return;
     }
 
-    // Rechazar eventos fuera de orden temporal
+    // Rechazar estrictamente eventos fuera de orden temporal (anteriores al último evento o cancelación)
     if (_lastEventTimestamp != null &&
-        event.timestamp.isBefore(
-          _lastEventTimestamp!.subtract(const Duration(seconds: 2)),
-        )) {
+        event.timestamp.isBefore(_lastEventTimestamp!)) {
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l1AndroidEvent,
+        source: event.source.displayName,
+        summary:
+            'DESCARTADO [ORDEN_TEMPORAL]: Evento tardío (${event.timestamp.toIso8601String()}) anterior al último válido/cancelación',
+        timestamp: event.timestamp,
+      );
       return;
     }
 
@@ -230,12 +259,16 @@ class BridgeDiagnosticController extends ChangeNotifier {
         rawText: event.text,
         rawSubText: event.subText,
         receivedAt: event.timestamp,
+        availableExtras: event.availableExtras,
+        remoteViewsTexts: event.remoteViewsTexts,
       ),
       BridgeSourceType.googleMaps => _parser.parseGoogleMaps(
         rawTitle: event.title,
         rawText: event.text,
         rawSubText: event.subText,
         receivedAt: event.timestamp,
+        availableExtras: event.availableExtras,
+        remoteViewsTexts: event.remoteViewsTexts,
       ),
       _ => _parser.parse(
         rawTitle: event.title,
@@ -243,13 +276,59 @@ class BridgeDiagnosticController extends ChangeNotifier {
         rawSubText: event.subText,
         source: event.source,
         receivedAt: event.timestamp,
+        availableExtras: event.availableExtras,
+        remoteViewsTexts: event.remoteViewsTexts,
       ),
     };
+
+    // Si es un banner de "En ejecución. Toca para abrir." y ya teníamos una maniobra válida activa,
+    // registrar en historial y logs pero NO sobrescribir la maniobra activa ni alterar el Tripper.
+    if (instruction.isAppRunningNotification &&
+        _lastInstruction != null &&
+        _lastInstruction!.isCompatibleWithTripper &&
+        !_lastInstruction!.isStale) {
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l2ParsedEvent,
+        source: instruction.source.displayName,
+        summary:
+            'DESCARTADO [APP_RUNNING_BANNER]: "${instruction.rawText}" ignorado para preservar maniobra activa',
+        timestamp: instruction.receivedAt,
+      );
+      _addToHistory(instruction);
+      notifyListeners();
+      return;
+    }
 
     _lastInstruction = instruction;
     _lastEventTimestamp = event.timestamp;
     _stateMachine.onExternalInstruction(instruction);
     _addToHistory(instruction);
+
+    final adaptation = _adapter.adaptBridgeInstruction(instruction);
+    NavigationDiagnosticLogger.logPipeline(
+      stage: DiagnosticPipelineStage.l3InternalModel,
+      source: instruction.source.displayName,
+      summary: instruction.discardReason ?? adaptation.description,
+      timestamp: instruction.receivedAt,
+    );
+
+    if (adaptation.isSupported &&
+        adaptation.packet != null &&
+        _bleService != null &&
+        _bleService.currentState.isReadyForNavigation) {
+      _bleService.sendRawPacket(adaptation.packet!).then((ok) {
+        _lastTransmittedToTripper = ok;
+        NavigationDiagnosticLogger.logPipeline(
+          stage: DiagnosticPipelineStage.l4BleTx,
+          source: instruction.source.displayName,
+          summary: 'txSuccess=$ok | hex=${adaptation.hexString ?? "n/a"}',
+        );
+        notifyListeners();
+      });
+    } else {
+      _lastTransmittedToTripper = false;
+    }
+
     notifyListeners();
   }
 

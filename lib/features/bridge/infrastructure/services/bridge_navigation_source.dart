@@ -25,15 +25,18 @@ class BridgeNavigationSource {
   BridgeNavigationInstruction? _lastInstruction;
   DateTime? _lastEventTimestamp;
   BridgeSourceType? _allowedSource;
+  bool _externalEnabled;
 
   BridgeNavigationSource({
     BridgeNativeChannel? nativeChannel,
     NavigationInstructionParser? parser,
     BridgeSourceType? allowedSource,
+    bool externalEnabled = true,
     this.staleDuration,
   }) : _nativeChannel = nativeChannel ?? BridgeNativeChannel(),
        _parser = parser ?? const NavigationInstructionParser(),
-       _allowedSource = allowedSource;
+       _allowedSource = allowedSource,
+       _externalEnabled = externalEnabled;
 
   /// Flujo continuo de instrucciones parseadas y normalizadas.
   Stream<BridgeNavigationInstruction> get instructions =>
@@ -42,11 +45,43 @@ class BridgeNavigationSource {
   /// Última instrucción procesada y retenida en memoria.
   BridgeNavigationInstruction? get lastInstruction => _lastInstruction;
 
-  /// Fuente externa permitida actualmente (`null` acepta Waze y Google Maps).
+  /// Fuente externa permitida actualmente (`null` acepta Waze y Google Maps si [externalEnabled] es true).
   BridgeSourceType? get allowedSource => _allowedSource;
+
+  /// Indica si la captura de fuentes externas está habilitada (false cuando se elige navegación interna).
+  bool get externalEnabled => _externalEnabled;
+
+  /// Habilita o deshabilita por completo la recepción de notificaciones externas (ej. al elegir fuente interna).
+  Future<void> setExternalEnabled(bool enabled) async {
+    if (_externalEnabled == enabled) return;
+    _externalEnabled = enabled;
+    if (!enabled) {
+      _stalenessTimer?.cancel();
+      if (_lastInstruction != null && !_lastInstruction!.isStale) {
+        final invalidated = _lastInstruction!.asStale();
+        _lastInstruction = null;
+        _lastEventTimestamp = null;
+        if (!_instructionController.isClosed) {
+          _instructionController.add(invalidated);
+        }
+      } else {
+        _lastInstruction = null;
+        _lastEventTimestamp = null;
+      }
+      await _nativeChannel.setSelectedSourcePackage('none');
+    } else {
+      final pkg = _allowedSource == BridgeSourceType.waze
+          ? 'com.waze'
+          : (_allowedSource == BridgeSourceType.googleMaps
+                ? 'com.google.android.apps.maps'
+                : 'all');
+      await _nativeChannel.setSelectedSourcePackage(pkg);
+    }
+  }
 
   /// Cambia la fuente externa permitida e invalida de inmediato datos de otra fuente.
   Future<void> setAllowedSource(BridgeSourceType? source) async {
+    _externalEnabled = true;
     if (_allowedSource != source) {
       _allowedSource = source;
       _stalenessTimer?.cancel();
@@ -108,8 +143,27 @@ class BridgeNavigationSource {
       _handleEvent(event);
 
   void _handleEvent(BridgeNotificationEvent event) {
+    // 0. Si la captura externa está deshabilitada (navegación interna activa), rechazar.
+    if (!_externalEnabled) {
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l1AndroidEvent,
+        source: event.source.displayName,
+        summary:
+            'DESCARTADO [FILTRO_FUENTE]: Modo interno activo, ignorando notificación externa de ${event.source.displayName}',
+        timestamp: event.timestamp,
+      );
+      return;
+    }
+
     // 1. Filtrar por la fuente seleccionada si se configuró una específica
     if (_allowedSource != null && event.source != _allowedSource) {
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l1AndroidEvent,
+        source: event.source.displayName,
+        summary:
+            'DESCARTADO [FILTRO_FUENTE]: Fuente seleccionada es ${_allowedSource!.displayName}, ignorando evento de ${event.source.displayName}',
+        timestamp: event.timestamp,
+      );
       return;
     }
 
@@ -117,8 +171,8 @@ class BridgeNavigationSource {
       stage: DiagnosticPipelineStage.l1AndroidEvent,
       source: event.source.displayName,
       summary: event.isRemoved
-          ? 'Notificación de navegación eliminada (isRemoved=true)'
-          : 'title="${event.title ?? ""}" | text="${event.text ?? ""}"',
+          ? 'pkg=${event.source.packageName} | Notificación de navegación eliminada (isRemoved=true)'
+          : 'pkg=${event.source.packageName} | title="${event.title ?? ""}" | text="${event.text ?? ""}" | sub="${event.subText ?? ""}" | extras=${event.availableExtras} | remoteViews=${event.remoteViewsTexts}',
       timestamp: event.timestamp,
     );
 
@@ -133,6 +187,7 @@ class BridgeNavigationSource {
               rawText: '',
               receivedAt: event.timestamp,
               status: BridgeInstructionStatus.stale,
+              discardReason: 'Notificación eliminada por el sistema o usuario',
             );
       _lastInstruction = stale;
       _lastEventTimestamp = event.timestamp;
@@ -142,11 +197,16 @@ class BridgeNavigationSource {
       return;
     }
 
-    // 3. Rechazar eventos fuera de orden temporal (> 2s más antiguos que el último válido)
+    // 3. Rechazar estrictamente eventos fuera de orden temporal (anteriores al último evento o cancelación)
     if (_lastEventTimestamp != null &&
-        event.timestamp.isBefore(
-          _lastEventTimestamp!.subtract(const Duration(seconds: 2)),
-        )) {
+        event.timestamp.isBefore(_lastEventTimestamp!)) {
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l1AndroidEvent,
+        source: event.source.displayName,
+        summary:
+            'DESCARTADO [ORDEN_TEMPORAL]: Evento tardío (${event.timestamp.toIso8601String()}) anterior al último evento/cancelación (${_lastEventTimestamp!.toIso8601String()})',
+        timestamp: event.timestamp,
+      );
       return;
     }
 
@@ -157,12 +217,16 @@ class BridgeNavigationSource {
         rawText: event.text,
         rawSubText: event.subText,
         receivedAt: event.timestamp,
+        availableExtras: event.availableExtras,
+        remoteViewsTexts: event.remoteViewsTexts,
       ),
       BridgeSourceType.googleMaps => _parser.parseGoogleMaps(
         rawTitle: event.title,
         rawText: event.text,
         rawSubText: event.subText,
         receivedAt: event.timestamp,
+        availableExtras: event.availableExtras,
+        remoteViewsTexts: event.remoteViewsTexts,
       ),
       _ => _parser.parse(
         rawTitle: event.title,
@@ -170,8 +234,26 @@ class BridgeNavigationSource {
         rawSubText: event.subText,
         source: event.source,
         receivedAt: event.timestamp,
+        availableExtras: event.availableExtras,
+        remoteViewsTexts: event.remoteViewsTexts,
       ),
     };
+
+    // 4.1 Si es una notificación de "En ejecución. Toca para abrir." y ya existe una maniobra válida activa,
+    // registrar el descarte sin sobrescribir la maniobra activa.
+    if (instruction.isAppRunningNotification &&
+        _lastInstruction != null &&
+        _lastInstruction!.isCompatibleWithTripper &&
+        !_lastInstruction!.isStale) {
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l2ParsedEvent,
+        source: instruction.source.displayName,
+        summary:
+            'DESCARTADO [APP_RUNNING_BANNER]: "${instruction.rawText}" ignorado para preservar maniobra activa vigente (${_lastInstruction!.maneuverType.name})',
+        timestamp: instruction.receivedAt,
+      );
+      return;
+    }
 
     // 5. Ignorar duplicados exactos consecutivos
     if (_lastInstruction != null &&
@@ -189,8 +271,11 @@ class BridgeNavigationSource {
     NavigationDiagnosticLogger.logPipeline(
       stage: DiagnosticPipelineStage.l2ParsedEvent,
       source: instruction.source.displayName,
-      summary:
-          'status=${instruction.status.name} | maneuver=${instruction.maneuverType.name} | dist=${instruction.distanceMeters ?? -1}m',
+      summary: instruction.isAppRunningNotification
+          ? 'CLASIFICADO [APP_ACTIVA_SIN_MANIOBRA]: "${instruction.rawText}"'
+          : (instruction.isCompatibleWithTripper
+                ? 'CLASIFICADO [MANIOBRA_VALIDA]: maneuver=${instruction.maneuverType.name} | dist=${instruction.distanceMeters}m | via="${instruction.destinationStreet ?? ""}"'
+                : 'DESCARTADO [SIN_MANIOBRA_VALIDA]: status=${instruction.status.name} | razón=${instruction.discardReason ?? "incompleta"} | raw="${instruction.rawText}"'),
       timestamp: instruction.receivedAt,
     );
 

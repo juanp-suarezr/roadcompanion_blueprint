@@ -1,12 +1,19 @@
 package com.example.road_companion
 
+import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.RemoteViews
+import android.widget.TextView
 import androidx.core.app.NotificationManagerCompat
 import java.util.concurrent.ConcurrentHashMap
 
@@ -43,6 +50,7 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         // Registro en memoria del último hash recibido por paquete para evitar ráfagas duplicadas
         private val lastPayloadHashByPackage = ConcurrentHashMap<String, Int>()
         private val lastPostTimeByPackage = ConcurrentHashMap<String, Long>()
+        private val activeNavNotificationIdByPackage = ConcurrentHashMap<String, Int>()
 
         /**
          * Verifica si el usuario ha habilitado el permiso de acceso a notificaciones para esta app.
@@ -79,6 +87,7 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         fun clearCache() {
             lastPayloadHashByPackage.clear()
             lastPostTimeByPackage.clear()
+            activeNavNotificationIdByPackage.clear()
         }
 
         private fun isPackageAllowedForCurrentSelection(packageName: String): Boolean {
@@ -87,6 +96,44 @@ class NavigationNotificationListenerService : NotificationListenerService() {
             if (target == null || target == "all" || target.isEmpty()) return true
             if (target == "none") return false
             return target == packageName
+        }
+
+        private fun isGenericRunningBanner(text: String?): Boolean {
+            if (text.isNullOrBlank()) return false
+            val lower = text.lowercase()
+            return lower.contains("en ejecución") ||
+                lower.contains("en ejecucion") ||
+                lower.contains("toca para abrir") ||
+                lower.contains("toque para abrir") ||
+                lower.contains("tap to open") ||
+                lower.contains("touch to open") ||
+                lower.contains("running.") ||
+                lower.contains("running in background") ||
+                lower == "running"
+        }
+
+        private val IRRELEVANT_ACTION_LABELS = setOf(
+            "waze",
+            "google maps",
+            "maps",
+            "cerrar",
+            "salir",
+            "detener",
+            "cancelar",
+            "apagar",
+            "silenciar",
+            "stop",
+            "exit",
+            "dismiss",
+            "close",
+            "mute"
+        )
+
+        private fun isIrrelevantRemoteViewLabel(text: String?): Boolean {
+            if (text.isNullOrBlank()) return true
+            val normalized = text.trim().lowercase()
+            if (IRRELEVANT_ACTION_LABELS.contains(normalized)) return true
+            return isGenericRunningBanner(normalized)
         }
     }
 
@@ -110,7 +157,7 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         }
 
         val notification = sbn.notification ?: return
-        val extras = notification.extras ?: return
+        val extras = notification.extras ?: Bundle.EMPTY
 
         // 2. Descartar eventos fuera de orden temporal para el mismo paquete
         val postTime = if (sbn.postTime > 0) sbn.postTime else System.currentTimeMillis()
@@ -119,21 +166,93 @@ class NavigationNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // 3. Extracción segura de campos de texto disponibles (sin almacenar historial privado)
-        val title = extras.getCharSequence("android.title")?.toString()
-            ?: extras.getCharSequence("android.title.big")?.toString()
-        val rawText = extras.getCharSequence("android.text")?.toString()
-        val bigText = extras.getCharSequence("android.bigText")?.toString()
-        val text = if (!rawText.isNullOrBlank()) rawText else bigText
-        val subText = extras.getCharSequence("android.subText")?.toString()
+        // 3. Extracción exhaustiva de campos de texto (extras estándar, textLines, ticker y RemoteViews)
+        val rawTitleOrig = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+            ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+        var title = rawTitleOrig
+        val rawText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+        val summaryText = extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()
+        val infoText = extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()
+        val tickerText = notification.tickerText?.toString()
+
+        val textLinesArray = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        val joinedLines = textLinesArray
+            ?.mapNotNull { it?.toString()?.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.joinToString(" — ")
+
+        // Inventario seguro de claves presentes (sin datos personales) para diagnóstico estructurado
+        val presentExtras = mutableListOf<String>()
+        if (!rawTitleOrig.isNullOrBlank()) presentExtras.add(Notification.EXTRA_TITLE)
+        if (!rawText.isNullOrBlank()) presentExtras.add(Notification.EXTRA_TEXT)
+        if (!bigText.isNullOrBlank()) presentExtras.add(Notification.EXTRA_BIG_TEXT)
+        if (!subText.isNullOrBlank()) presentExtras.add(Notification.EXTRA_SUB_TEXT)
+        if (!summaryText.isNullOrBlank()) presentExtras.add(Notification.EXTRA_SUMMARY_TEXT)
+        if (!infoText.isNullOrBlank()) presentExtras.add(Notification.EXTRA_INFO_TEXT)
+        if (!joinedLines.isNullOrBlank()) presentExtras.add(Notification.EXTRA_TEXT_LINES)
+        if (!tickerText.isNullOrBlank()) presentExtras.add("tickerText")
+        @Suppress("DEPRECATION")
+        if (notification.contentView != null) presentExtras.add("contentView")
+        @Suppress("DEPRECATION")
+        if (notification.bigContentView != null) presentExtras.add("bigContentView")
+        @Suppress("DEPRECATION")
+        if (notification.headsUpContentView != null) presentExtras.add("headsUpContentView")
+
+        // Extraer textos visibles de RemoteViews personalizados (usados por Waze y Google Maps en Android)
+        val remoteViewTexts = extractTextsFromRemoteViews(notification)
+
+        var text = when {
+            !bigText.isNullOrBlank() && !isGenericRunningBanner(bigText) -> bigText
+            !rawText.isNullOrBlank() && !isGenericRunningBanner(rawText) -> rawText
+            !joinedLines.isNullOrBlank() -> joinedLines
+            remoteViewTexts.isNotEmpty() -> remoteViewTexts.joinToString(" — ")
+            !rawText.isNullOrBlank() -> rawText
+            else -> bigText
+        }
+
+        // Si el título es solo el nombre de la app ("Waze" / "Google Maps") y RemoteViews o ticker
+        // contiene fragmentos adicionales (ej. distancia en primer TextView y giro en el segundo), enriquecer:
+        if (remoteViewTexts.isNotEmpty()) {
+            val nonTrivialRemote = remoteViewTexts.filter { !isIrrelevantRemoteViewLabel(it) }
+            if (nonTrivialRemote.isNotEmpty()) {
+                if (title.isNullOrBlank() || isIrrelevantRemoteViewLabel(title)) {
+                    title = nonTrivialRemote.first()
+                }
+                if (text.isNullOrBlank() || isGenericRunningBanner(text)) {
+                    text = if (nonTrivialRemote.size > 1) {
+                        nonTrivialRemote.drop(1).joinToString(" — ")
+                    } else {
+                        nonTrivialRemote.first()
+                    }
+                }
+            }
+        }
+
+        if ((text.isNullOrBlank() || isGenericRunningBanner(text)) &&
+            !tickerText.isNullOrBlank() &&
+            !isGenericRunningBanner(tickerText)
+        ) {
+            text = tickerText
+        }
+
+        val effectiveSubText = listOfNotNull(subText, summaryText, infoText)
+            .map { it.trim() }
+            .firstOrNull { it.isNotEmpty() }
 
         // Si todos los campos de texto están vacíos, no es una indicación útil
-        if (title.isNullOrBlank() && text.isNullOrBlank() && subText.isNullOrBlank()) {
+        if (title.isNullOrBlank() && text.isNullOrBlank() && effectiveSubText.isNullOrBlank()) {
             return
         }
 
+        val combinedCheck = "${title ?: ""} ${text ?: ""}"
+        if (!isGenericRunningBanner(combinedCheck)) {
+            activeNavNotificationIdByPackage[packageName] = sbn.id
+        }
+
         // 4. Deduplicación de eventos consecutivos idénticos
-        val payloadHash = (packageName + "|" + (title ?: "") + "|" + (text ?: "") + "|" + (subText ?: "")).hashCode()
+        val payloadHash = (packageName + "|" + (title ?: "") + "|" + (text ?: "") + "|" + (effectiveSubText ?: "")).hashCode()
         val previousHash = lastPayloadHashByPackage[packageName]
         if (previousHash == payloadHash) {
             return
@@ -146,8 +265,10 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         payload["packageName"] = packageName
         payload["title"] = title
         payload["text"] = text
-        payload["subText"] = subText
-        payload["bigText"] = bigText
+        payload["subText"] = effectiveSubText
+        payload["bigText"] = bigText ?: joinedLines
+        payload["availableExtras"] = presentExtras
+        payload["remoteViewsTexts"] = remoteViewTexts
         payload["timestamp"] = postTime
         payload["isRemoved"] = false
 
@@ -163,17 +284,62 @@ class NavigationNotificationListenerService : NotificationListenerService() {
             return
         }
 
+        val trackedId = activeNavNotificationIdByPackage[packageName]
+        if (trackedId != null && trackedId != sbn.id) {
+            // Se cerró una notificación secundaria pero la notificación de navegación principal sigue activa
+            return
+        }
+
+        val removalTime = System.currentTimeMillis()
+        activeNavNotificationIdByPackage.remove(packageName)
         lastPayloadHashByPackage.remove(packageName)
-        lastPostTimeByPackage.remove(packageName)
+        // Conservar marca de tiempo de eliminación para impedir que una notificación tardía
+        // con postTime anterior reactive una maniobra ya cancelada.
+        lastPostTimeByPackage[packageName] = removalTime
 
         val payload = HashMap<String, Any?>()
         payload["packageName"] = packageName
         payload["title"] = null
         payload["text"] = null
         payload["subText"] = null
-        payload["timestamp"] = System.currentTimeMillis()
+        payload["timestamp"] = removalTime
         payload["isRemoved"] = true
 
         notificationListener?.invoke(payload)
+    }
+
+    private fun extractTextsFromRemoteViews(notification: Notification): List<String> {
+        val result = mutableListOf<String>()
+        try {
+            @Suppress("DEPRECATION")
+            val candidates = listOfNotNull(
+                notification.bigContentView,
+                notification.contentView,
+                notification.headsUpContentView
+            )
+            for (rv in candidates) {
+                val container = FrameLayout(applicationContext)
+                val inflated: View = rv.apply(applicationContext, container)
+                collectTextViews(inflated, result)
+                if (result.isNotEmpty()) break
+            }
+        } catch (_: Throwable) {
+            // Si algún RemoteViews de terceros requiere permisos o recursos privados, ignorar de forma segura
+        }
+        return result.distinct()
+    }
+
+    private fun collectTextViews(view: View?, out: MutableList<String>) {
+        if (view == null) return
+        if (view is TextView) {
+            val value = view.text?.toString()?.trim()
+            if (!value.isNullOrEmpty()) {
+                out.add(value)
+            }
+        } else if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                collectTextViews(view.getChildAt(i), out)
+            }
+        }
     }
 }

@@ -99,7 +99,10 @@ class SimulationTraceEvent {
       'timestamp': timestamp.toIso8601String(),
       'accumulatedDistanceMeters': accumulatedDistanceMeters,
       'virtualPosition': virtualPosition != null
-          ? {'lat': virtualPosition!.latitude, 'lon': virtualPosition!.longitude}
+          ? {
+              'lat': virtualPosition!.latitude,
+              'lon': virtualPosition!.longitude,
+            }
           : null,
       'stepNumber': stepNumber,
       'nextStepNumber': nextStepNumber,
@@ -126,8 +129,12 @@ class SimulationTraceEvent {
     final sign = curvatureDeltaDegrees >= 0 ? '+' : '';
     final nextStr = nextStepNumber != null ? ' -> Próx #$nextStepNumber' : '';
     final opcStr = opcodeHex != null ? ' [Op: $opcodeHex]' : '';
-    final timeStr = timeSinceLastNavScreenMs != null ? ' | ΔtPantalla: ${timeSinceLastNavScreenMs}ms' : '';
-    final bleStr = bleConnectionState != null ? ' | BLE: $bleConnectionState' : '';
+    final timeStr = timeSinceLastNavScreenMs != null
+        ? ' | ΔtPantalla: ${timeSinceLastNavScreenMs}ms'
+        : '';
+    final bleStr = bleConnectionState != null
+        ? ' | BLE: $bleConnectionState'
+        : '';
     return '[${timestamp.toIso8601String().substring(11, 19)}] '
         'Paso #$stepNumber$nextStr ($maneuverType$opcStr) | '
         'DistRestante: ${distanceToManeuverMeters}m | '

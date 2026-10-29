@@ -162,7 +162,8 @@ class HomeScreen extends StatelessWidget {
 
                   QuickActionCard(
                     icon: Icons.notifications_active_outlined,
-                    title: 'Modo Compañero (${settings.selectedNavigationSource.displayName})',
+                    title:
+                        'Modo Compañero (${settings.selectedNavigationSource.displayName})',
                     subtitle:
                         'Sincronización de notificaciones externas y estado del puente Tripper',
                     onTap: () =>

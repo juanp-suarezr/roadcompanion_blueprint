@@ -249,23 +249,31 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _discoveredDevices.clear();
       _devicesController.add(List.unmodifiable(_discoveredDevices));
       _setState(TripperConnectionState.scanning);
-      _log('[SCAN-INICIO] Preparando búsqueda BLE (duración máxima: ${timeout.inSeconds}s)...');
+      _log(
+        '[SCAN-INICIO] Preparando búsqueda BLE (duración máxima: ${timeout.inSeconds}s)...',
+      );
 
       final isAvailable = await isBluetoothAvailable();
       if (!isAvailable) {
         _setState(TripperConnectionState.bluetoothDisabled);
-        _log('[SCAN-ERROR] No se puede escanear: el Bluetooth está desactivado.');
+        _log(
+          '[SCAN-ERROR] No se puede escanear: el Bluetooth está desactivado.',
+        );
         return;
       }
 
       // Detener cualquier escaneo residual previo en el adaptador Android
       if (!kIsWeb && FlutterBluePlus.isScanningNow) {
-        _log('[SCAN-RESET] Deteniendo escaneo previo activo en el adaptador Bluetooth...');
+        _log(
+          '[SCAN-RESET] Deteniendo escaneo previo activo en el adaptador Bluetooth...',
+        );
         try {
           await FlutterBluePlus.stopScan();
           await Future.delayed(const Duration(milliseconds: 150));
         } catch (stopErr) {
-          _log('[SCAN-RESET] Aviso al reiniciar adaptador de escaneo: $stopErr');
+          _log(
+            '[SCAN-RESET] Aviso al reiniciar adaptador de escaneo: $stopErr',
+          );
         }
       }
 
@@ -274,7 +282,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
         try {
           final scanPerm = await Permission.bluetoothScan.status;
           final connectPerm = await Permission.bluetoothConnect.status;
-          _log('[SCAN-PERMISOS] Estado permisos Android: Scan=${scanPerm.name}, Connect=${connectPerm.name}');
+          _log(
+            '[SCAN-PERMISOS] Estado permisos Android: Scan=${scanPerm.name}, Connect=${connectPerm.name}',
+          );
         } catch (permErr) {
           _log('[SCAN-PERMISOS] Info consulta permisos: $permErr');
         }
@@ -285,7 +295,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
         try {
           final bonded = await FlutterBluePlus.bondedDevices;
           if (bonded.isNotEmpty) {
-            _log('[SCAN-VINCULADOS] Consultando ${bonded.length} periférico(s) vinculado(s) en Android...');
+            _log(
+              '[SCAN-VINCULADOS] Consultando ${bonded.length} periférico(s) vinculado(s) en Android...',
+            );
             for (final b in bonded) {
               final rawName = b.platformName.trim().isNotEmpty
                   ? b.platformName
@@ -297,10 +309,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
                   name: rawName,
                   rssi: -50,
                 );
-                final idx = _discoveredDevices.indexWhere((d) => d.id == evaluated.id);
+                final idx = _discoveredDevices.indexWhere(
+                  (d) => d.id == evaluated.id,
+                );
                 if (idx < 0) {
                   _discoveredDevices.add(evaluated);
-                  _log('[SCAN-VINCULADO] Dispositivo vinculado registrado: "${evaluated.name}" [ID: ${evaluated.id}] (Candidato: ${evaluated.isTripperCandidate})');
+                  _log(
+                    '[SCAN-VINCULADO] Dispositivo vinculado registrado: "${evaluated.name}" [ID: ${evaluated.id}] (Candidato: ${evaluated.isTripperCandidate})',
+                  );
                 }
               }
             }
@@ -334,7 +350,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
                   serviceUuids.add(u.toString());
                 }
               } catch (uErr) {
-                _log('[SCAN-UUID-AVISO] Error al extraer UUIDs para $deviceId: $uErr');
+                _log(
+                  '[SCAN-UUID-AVISO] Error al extraer UUIDs para $deviceId: $uErr',
+                );
               }
 
               final evaluated = TripperDevice.evaluate(
@@ -351,7 +369,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
               if (existingIndex >= 0) {
                 // Actualizar RSSI y nombre sin duplicar el identificador
                 final old = _discoveredDevices[existingIndex];
-                final shouldUpdate = old.rssi != evaluated.rssi ||
+                final shouldUpdate =
+                    old.rssi != evaluated.rssi ||
                     old.name != evaluated.name ||
                     (!old.isTripperCandidate && evaluated.isTripperCandidate);
                 if (shouldUpdate) {
@@ -393,7 +412,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
       // androidLegacy: true fuerza al radio BLE a escanear paquetes publicitarios estándar 1M PHY (Bluetooth 4.2 LE),
       // lo cual es indispensable para el Royal Enfield Tripper Pod y evita anomalías en controladores BLE Samsung/Android 14.
-      _log('[SCAN-RADIO] Iniciando escáner BLE en modo legacy 1M PHY (timeout: ${timeout.inSeconds}s)...');
+      _log(
+        '[SCAN-RADIO] Iniciando escáner BLE en modo legacy 1M PHY (timeout: ${timeout.inSeconds}s)...',
+      );
       await FlutterBluePlus.startScan(
         timeout: timeout,
         androidLegacy: true,
@@ -880,7 +901,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       if (_currentState.isReadyForNavigation && _writeCharacteristic != null) {
         final now = DateTime.now();
         final lastSent = _lastPacketSentTime;
-        if (lastSent == null || now.difference(lastSent).inMilliseconds >= 1800) {
+        if (lastSent == null ||
+            now.difference(lastSent).inMilliseconds >= 1800) {
           if (_activeNavPacket != null) {
             // MODO PANTALLA ACTIVA (Navegación / Prueba):
             // El firmware del Tripper Pod cuenta con un watchdog de pantalla de ~5s.
@@ -915,10 +937,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
     });
   }
 
-  Future<bool> _enqueuePacket(
-    List<int> bytes, {
-    required String description,
-  }) {
+  Future<bool> _enqueuePacket(List<int> bytes, {required String description}) {
     final completer = Completer<bool>();
     _packetQueue.add(
       _QueuedPacket(
@@ -956,10 +975,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
         await char.write(item.bytes, withoutResponse: withoutResponse);
         sw.stop();
         _lastPacketSentTime = DateTime.now();
-        if (item.bytes.length == 20 && item.bytes[0] == 0x10 && item.bytes[1] == 0x11) {
+        if (item.bytes.length == 20 &&
+            item.bytes[0] == 0x10 &&
+            item.bytes[1] == 0x11) {
           _lastNavPacketSentTime = _lastPacketSentTime;
           _lastNavPacketSentHex = hex;
-        } else if (item.bytes.length == 20 && item.bytes[0] == 0x03 && item.bytes[1] == 0x00) {
+        } else if (item.bytes.length == 20 &&
+            item.bytes[0] == 0x03 &&
+            item.bytes[1] == 0x00) {
           _lastKeepAliveSentTime = _lastPacketSentTime;
         }
         _lastTransmissionResult = 'OK (${item.description})';
@@ -990,9 +1013,20 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
     // Si la trama es de navegación (0x10 0x11), la marcamos como paquete activo para el bucle de refresco (watchdog 2s)
     if (bytes.length == 20 && bytes[0] == 0x10 && bytes[1] == 0x11) {
+      final incomingHex = TripperProtocol.toHexString(bytes);
+      final now = DateTime.now();
       _activeNavPacket = Uint8List.fromList(bytes);
       _activeNavDescription = 'TRAMA_CRUDA_PANTALLA (0x10 0x11)';
       _isNavScreenActive = true;
+
+      // Deduplicación de ráfaga: si dos controladores (ej. Bridge y Diagnóstico) o notificaciones
+      // redundantes solicitan escribir exactamente la misma trama 0x10 0x11 con menos de 400 ms de
+      // diferencia, evitar escritura GATT duplicada.
+      if (_lastNavPacketSentHex == incomingHex &&
+          _lastNavPacketSentTime != null &&
+          now.difference(_lastNavPacketSentTime!).inMilliseconds < 400) {
+        return true;
+      }
     } else if (bytes.length == 20 && bytes[0] == 0x50) {
       // Si es sincronización de hora (0x50), regresa a modo reloj
       _activeNavPacket = null;
@@ -1006,7 +1040,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
   @override
   Future<bool> sendTestMessage() async {
     if (_writeCharacteristic == null || !_currentState.isReadyForNavigation) {
-      _log('No se puede enviar indicación de prueba: periférico no enlazado o no autenticado.');
+      _log(
+        'No se puede enviar indicación de prueba: periférico no enlazado o no autenticado.',
+      );
       return false;
     }
 
@@ -1015,7 +1051,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
       return stopNavigation();
     }
 
-    _log('Iniciando maniobra de prueba en pantalla: Recto 500m (con refresco watchdog cada 2s)...');
+    _log(
+      'Iniciando maniobra de prueba en pantalla: Recto 500m (con refresco watchdog cada 2s)...',
+    );
     final testNav = TripperProtocol.buildNavPacket(
       maneuver: TripperProtocol.maneuverStraight,
       distanceMeters: 500,
@@ -1038,7 +1076,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
   @override
   Future<bool> stopNavigation() async {
-    _log('[NAV-STOP-REQ] Solicitud de detención de navegación manual recibida.');
+    _log(
+      '[NAV-STOP-REQ] Solicitud de detención de navegación manual recibida.',
+    );
 
     final lastNavHex = _lastNavPacketSentHex;
     final lastNavTime = _lastNavPacketSentTime;
@@ -1052,7 +1092,10 @@ class FlutterBluePlusTripperService implements TripperBleService {
     // 2. Purgar de la cola cualquier trama de navegación (0x10 0x11) pendiente
     int purgedCount = 0;
     _packetQueue.removeWhere((item) {
-      final isNav = item.bytes.length == 20 && item.bytes[0] == 0x10 && item.bytes[1] == 0x11;
+      final isNav =
+          item.bytes.length == 20 &&
+          item.bytes[0] == 0x10 &&
+          item.bytes[1] == 0x11;
       if (isNav) {
         purgedCount++;
         item.completer.complete(false);
@@ -1069,7 +1112,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
     );
 
     if (_writeCharacteristic == null || !_currentState.isReadyForNavigation) {
-      _log('[NAV-STOP] Sesión BLE no activa o no lista. No se emite keepalive.');
+      _log(
+        '[NAV-STOP] Sesión BLE no activa o no lista. No se emite keepalive.',
+      );
       return false;
     }
 
@@ -1118,6 +1163,13 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
   @override
   Future<bool> sendManeuver(TripperManeuverPayload maneuver) async {
+    if (!maneuver.isSupported) {
+      _log(
+        '[MANIOBRA-RECHAZADA] Maniobra desconocida o sin distancia válida (${maneuver.maneuverType.name}); no se envía trama al Tripper.',
+      );
+      clearActiveNavPacket(reason: 'Maniobra desconocida o no compatible');
+      return false;
+    }
     if (_writeCharacteristic == null || !_currentState.isReadyForNavigation) {
       _log('No se puede emitir maniobra: sesión Tripper Pod no autenticada.');
       return false;
@@ -1179,7 +1231,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
   @override
   Future<void> disconnect() async {
     _isLocalDisconnectRequested = true;
-    _log('[BLE-DISCONNECT-LOCAL-REQ] Solicitud local de desconexión BLE iniciada por el usuario o la aplicación.');
+    _log(
+      '[BLE-DISCONNECT-LOCAL-REQ] Solicitud local de desconexión BLE iniciada por el usuario o la aplicación.',
+    );
     try {
       _setState(TripperConnectionState.disconnecting);
       _log('Desconectando dispositivo de forma segura...');
@@ -1254,7 +1308,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
     buffer.writeln(
       'Último keepalive (PING_FW): ${_lastKeepAliveSentTime?.toIso8601String() ?? "N/A"}',
     );
-    buffer.writeln('Desconexión local solicitada: $_isLocalDisconnectRequested');
+    buffer.writeln(
+      'Desconexión local solicitada: $_isLocalDisconnectRequested',
+    );
     buffer.writeln(
       'Resultado última transmisión: ${_lastTransmissionResult ?? "ninguno"}',
     );

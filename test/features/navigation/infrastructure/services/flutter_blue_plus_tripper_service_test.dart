@@ -94,31 +94,37 @@ void main() {
       },
     );
 
-    test('Telemetry getters se inicializan con valores por defecto seguros', () {
-      final service = FlutterBluePlusTripperService();
-      expect(service.lastNavPacketSentTime, isNull);
-      expect(service.lastNavPacketSentHex, isNull);
-      expect(service.lastKeepAliveSentTime, isNull);
-      expect(service.isLocalDisconnectRequested, isFalse);
-      expect(service.isNavScreenActive, isFalse);
-      expect(service.isTestManeuverActive, isFalse);
-    });
+    test(
+      'Telemetry getters se inicializan con valores por defecto seguros',
+      () {
+        final service = FlutterBluePlusTripperService();
+        expect(service.lastNavPacketSentTime, isNull);
+        expect(service.lastNavPacketSentHex, isNull);
+        expect(service.lastKeepAliveSentTime, isNull);
+        expect(service.isLocalDisconnectRequested, isFalse);
+        expect(service.isNavScreenActive, isFalse);
+        expect(service.isTestManeuverActive, isFalse);
+      },
+    );
 
-    test('stopNavigation limpia flags y emite logs de solicitud y purga', () async {
-      final service = FlutterBluePlusTripperService();
-      final result = await service.stopNavigation();
-      expect(result, isFalse); // No conectado
-      expect(service.isNavScreenActive, isFalse);
-      expect(service.isTestManeuverActive, isFalse);
-      expect(
-        service.diagnosticLogs.any((l) => l.contains('[NAV-STOP-REQ]')),
-        isTrue,
-      );
-      expect(
-        service.diagnosticLogs.any((l) => l.contains('[NAV-STOP-PURGE]')),
-        isTrue,
-      );
-    });
+    test(
+      'stopNavigation limpia flags y emite logs de solicitud y purga',
+      () async {
+        final service = FlutterBluePlusTripperService();
+        final result = await service.stopNavigation();
+        expect(result, isFalse); // No conectado
+        expect(service.isNavScreenActive, isFalse);
+        expect(service.isTestManeuverActive, isFalse);
+        expect(
+          service.diagnosticLogs.any((l) => l.contains('[NAV-STOP-REQ]')),
+          isTrue,
+        );
+        expect(
+          service.diagnosticLogs.any((l) => l.contains('[NAV-STOP-PURGE]')),
+          isTrue,
+        );
+      },
+    );
 
     test('disconnect registra solicitud local explícita en logs', () async {
       final service = FlutterBluePlusTripperService();

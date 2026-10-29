@@ -247,7 +247,9 @@ class ActiveTurnByTurnHud extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+                color: isDark
+                    ? AppColors.coldWhite
+                    : AppColors.primaryTextLight,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

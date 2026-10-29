@@ -53,6 +53,7 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
   bool _needsLocationForCategory = false;
   List<Destination> _results = [];
   bool _hasSearched = false;
+  int _searchRequestSeq = 0;
 
   @override
   void dispose() {
@@ -64,6 +65,7 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
   void _onQueryChanged(String query) {
     _debounceTimer?.cancel();
     if (query.trim().length < 2) {
+      _searchRequestSeq++;
       setState(() {
         _results = [];
         _isLoading = false;
@@ -83,6 +85,7 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
     final cleanQuery = query.trim();
     if (cleanQuery.length < 2) return;
 
+    final requestId = ++_searchRequestSeq;
     final isCategory = isCategoryQuery(cleanQuery);
 
     // Si la búsqueda es por categoría y no hay GPS, se solicita la ubicación al usuario
@@ -122,23 +125,27 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
         );
       }
 
+      if (!mounted || requestId != _searchRequestSeq) return;
+
       final rankedResults = rankDestinations(
         results: rawResults,
         query: cleanQuery,
         userLocation: widget.userLocation,
       );
 
-      if (!mounted) return;
       setState(() {
         _results = rankedResults;
         _isLoading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _searchRequestSeq) return;
+      final rawErr = e.toString();
+      final isRateLimit = rawErr.contains('429');
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'No se pudo conectar con el servicio de búsqueda local. Verifica tu conexión a internet o reintenta.';
+        _errorMessage = isRateLimit
+            ? 'Demasiadas consultas seguidas al servidor de mapas (HTTP 429). Espera unos segundos y pulsa Reintentar.'
+            : 'No se pudo conectar con el servicio de búsqueda local. Verifica tu conexión a internet o reintenta.';
       });
     }
   }
@@ -672,6 +679,7 @@ String resolveCategoryKey(String query) {
   }
   if (q.contains('centro comercial') ||
       q.contains('centros comerciales') ||
+      q.contains('c. comerciales') ||
       q.contains('mall') ||
       q.contains('shopping') ||
       q.contains('unicentro')) {
@@ -801,6 +809,7 @@ bool isCategoryQuery(String query) {
     'parroquias',
     'centro comercial',
     'centros comerciales',
+    'c. comerciales',
     'mall',
     'shopping',
     'unicentro',
@@ -812,12 +821,19 @@ bool isCategoryQuery(String query) {
     'desayuno',
     'cafe',
     'café',
+    'cafes',
+    'cafés',
     'cafeteria',
     'cafetería',
+    'cafeterias',
+    'cafeterías',
     'panaderia',
     'panadería',
     'taller',
     'talleres',
+    'talleres moto',
+    'taller moto',
+    'taller de moto',
     'taller de motos',
     'talleres de motos',
     'mecanico',
@@ -871,14 +887,31 @@ bool isCategoryQuery(String query) {
   }
 
   for (final kw in categoryKeywords) {
-    if (q == kw ||
-        q.startsWith('$kw ') ||
-        q.endsWith(' $kw') ||
-        q.contains(' $kw ')) {
+    if (q == kw) {
       return true;
     }
-    if (q.contains(kw) && kw.length >= 6) {
-      return true;
+    // Solo tratar como categoría genérica si viene acompañada únicamente de
+    // calificadores de cercanía, evitando convertir nombres propios específicos
+    // (ej. "Parque del Café", "Hotel Movich", "Hospital San Jorge") en categorías genéricas.
+    if (q.startsWith('$kw ')) {
+      final remainder = q.substring(kw.length).trim();
+      const proximityQualifiers = {
+        'cerca',
+        'cerca de mi',
+        'cerca de mí',
+        'cercano',
+        'cercanos',
+        'cercana',
+        'cercanas',
+        'aqui',
+        'aquí',
+        'abierto',
+        'abiertos',
+        '24 horas',
+      };
+      if (proximityQualifiers.contains(remainder)) {
+        return true;
+      }
     }
   }
   return false;
@@ -1127,8 +1160,6 @@ List<Destination> rankDestinations({
       return 3; // Aparece en el subtítulo (municipio, vía)
     }
     return 4; // Otros
-
-
   }
 
   sorted.sort((a, b) {

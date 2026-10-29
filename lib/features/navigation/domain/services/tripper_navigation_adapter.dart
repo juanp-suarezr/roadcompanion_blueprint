@@ -45,9 +45,7 @@ class TripperNavAdaptationResult {
     );
   }
 
-  factory TripperNavAdaptationResult.incompatible({
-    required String reason,
-  }) {
+  factory TripperNavAdaptationResult.incompatible({required String reason}) {
     return TripperNavAdaptationResult._(
       isSupported: false,
       packet: null,

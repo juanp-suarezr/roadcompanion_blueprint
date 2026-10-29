@@ -93,6 +93,7 @@ enum CompanionNavigationState {
   idle,
   awaitingPermission,
   sourceSelected,
+  appActiveNoRoute,
   navigationDetected,
   navigationActive,
   navigationStale,
@@ -110,10 +111,12 @@ enum CompanionNavigationState {
         return 'Esperando permiso de notificaciones';
       case CompanionNavigationState.sourceSelected:
         return 'Fuente seleccionada (sin ruta activa)';
+      case CompanionNavigationState.appActiveNoRoute:
+        return 'App activa en segundo plano (sin maniobra)';
       case CompanionNavigationState.navigationDetected:
-        return 'Notificación detectada (validando maniobra)';
+        return 'Notificación sin maniobra reconocible';
       case CompanionNavigationState.navigationActive:
-        return 'Navegación activa sincronizada';
+        return 'Maniobra válida sincronizada';
       case CompanionNavigationState.navigationStale:
         return 'Navegación desactualizada / sin señal reciente';
       case CompanionNavigationState.navigationStopped:
@@ -154,16 +157,16 @@ class InternalNavigationSource implements NavigationSource {
       SelectedNavigationSourceType.internal;
 
   @override
-  NavigationSourceCapabilities get capabilities =>
-      const NavigationSourceCapabilities(
-        providesManeuvers: true,
-        providesDistances: true,
-        providesRoadGeometry: true,
-        supportsRealCurveDetection: true,
-        requiresNotificationAccess: false,
-        limitationDisclosure:
-            'Provee maniobras, distancias y geometría vial verificada (OSRM/GPX) para detección anticipada de curvas.',
-      );
+  NavigationSourceCapabilities
+  get capabilities => const NavigationSourceCapabilities(
+    providesManeuvers: true,
+    providesDistances: true,
+    providesRoadGeometry: true,
+    supportsRealCurveDetection: true,
+    requiresNotificationAccess: false,
+    limitationDisclosure:
+        'Provee maniobras, distancias y geometría vial verificada (OSRM/GPX) para detección anticipada de curvas.',
+  );
 
   @override
   RoadCurvatureInfo evaluateCurvature({
@@ -201,16 +204,16 @@ class WazeNavigationSource implements NavigationSource {
       SelectedNavigationSourceType.waze;
 
   @override
-  NavigationSourceCapabilities get capabilities =>
-      const NavigationSourceCapabilities(
-        providesManeuvers: true,
-        providesDistances: true,
-        providesRoadGeometry: false,
-        supportsRealCurveDetection: false,
-        requiresNotificationAccess: true,
-        limitationDisclosure:
-            'Waze expone giro y distancia en su notificación de Android, pero NO expone la polilínea activa. La detección geométrica de curvas permanece en estado de geometría no expuesta para no inventar curvas.',
-      );
+  NavigationSourceCapabilities
+  get capabilities => const NavigationSourceCapabilities(
+    providesManeuvers: true,
+    providesDistances: true,
+    providesRoadGeometry: false,
+    supportsRealCurveDetection: false,
+    requiresNotificationAccess: true,
+    limitationDisclosure:
+        'Waze suele publicar únicamente su notificación de servicio activo («En ejecución. Toca para abrir.») salvo que Android emita alertas de giro en segundo plano (pendiente de verificación en movimiento real). No expone polilínea activa ni se inventan curvas o maniobras.',
+  );
 
   BridgeNavigationInstruction parseNotification({
     String? title,
@@ -267,16 +270,16 @@ class GoogleMapsNavigationSource implements NavigationSource {
       SelectedNavigationSourceType.googleMaps;
 
   @override
-  NavigationSourceCapabilities get capabilities =>
-      const NavigationSourceCapabilities(
-        providesManeuvers: true,
-        providesDistances: true,
-        providesRoadGeometry: false,
-        supportsRealCurveDetection: false,
-        requiresNotificationAccess: true,
-        limitationDisclosure:
-            'Google Maps expone maniobras y distancias en su notificación turn-by-turn, pero NO expone la polilínea de la ruta activa. No se inventan curvas cuando no existe geometría verificada.',
-      );
+  NavigationSourceCapabilities
+  get capabilities => const NavigationSourceCapabilities(
+    providesManeuvers: true,
+    providesDistances: true,
+    providesRoadGeometry: false,
+    supportsRealCurveDetection: false,
+    requiresNotificationAccess: true,
+    limitationDisclosure:
+        'Google Maps expone maniobras y distancias en su notificación turn-by-turn, pero NO expone la polilínea de la ruta activa. No se inventan curvas cuando no existe geometría verificada.',
+  );
 
   BridgeNavigationInstruction parseNotification({
     String? title,
@@ -428,7 +431,19 @@ class CompanionNavigationStateMachine {
       return;
     }
 
-    // Regla 2: recibir una notificación no equivale a tener una maniobra válida
+    // Regla 2: distinguir notificación de app en ejecución, notificación sin maniobra y maniobra válida
+    if (instruction.isAppRunningNotification) {
+      // Si ya teníamos una maniobra válida activa, un banner de "En ejecución" en segundo plano no debe sobrescribirla
+      if (_activeExternalInstruction != null &&
+          _activeExternalInstruction!.isCompatibleWithTripper &&
+          !_activeExternalInstruction!.isStale) {
+        return;
+      }
+      _activeExternalInstruction = instruction;
+      _state = CompanionNavigationState.appActiveNoRoute;
+      return;
+    }
+
     _activeExternalInstruction = instruction;
     if (instruction.isCompatibleWithTripper) {
       _state = CompanionNavigationState.navigationActive;

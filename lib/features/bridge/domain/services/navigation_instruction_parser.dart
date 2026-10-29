@@ -40,7 +40,7 @@ class NavigationInstructionParser {
 
   // Expresión para detectar número de salida en rotondas (1 a 8).
   static final RegExp _roundaboutExitRegex = RegExp(
-    r'(?:toma|take)?\s*(?:la)?\s*([1-8])(?:[ªaºo°]|\.ª|\.º|st|nd|rd|th)?\s*salida|\bsalida\s*([1-8])|\b([1-8])(?:st|nd|rd|th)\s*exit',
+    r'(?:toma|tome|take)?\s*(?:la)?\s*([1-8])(?:[ªaºo°]|ra|da|ta|va|\.ª|\.º|st|nd|rd|th)?\s*salida|\bsalida\s*([1-8])|\b([1-8])(?:st|nd|rd|th)\s*exit',
     caseSensitive: false,
   );
 
@@ -58,6 +58,8 @@ class NavigationInstructionParser {
     String? rawSubText,
     required BridgeSourceType source,
     DateTime? receivedAt,
+    List<String> availableExtras = const [],
+    List<String> remoteViewsTexts = const [],
   }) {
     final effectiveReceivedAt = receivedAt ?? DateTime.now();
 
@@ -79,36 +81,100 @@ class NavigationInstructionParser {
         rawTitle: rawTitle,
         receivedAt: effectiveReceivedAt,
         status: BridgeInstructionStatus.unrecognized,
+        discardReason: 'Notificación vacía sin texto útil',
+        availableExtras: availableExtras,
+        remoteViewsTexts: remoteViewsTexts,
       );
     }
 
-    // 1. Extraer distancia si está presente en cualquiera de los fragmentos.
+    final lowerCombined = combinedText.toLowerCase();
+
+    // 0. Detectar si es únicamente una notificación persistente de "aplicación en ejecución"
+    // (ej. "Waze — En ejecución. Toca para abrir." / "Waze — Running. Tap to open.") y NO una instrucción de giro.
+    if (_isAppRunningOnlyBanner(lowerCombined)) {
+      return BridgeNavigationInstruction(
+        source: source,
+        maneuverType: ManeuverType.unknown,
+        rawText: combinedText,
+        rawTitle: title.isNotEmpty ? title : null,
+        receivedAt: effectiveReceivedAt,
+        status: BridgeInstructionStatus.unrecognized,
+        isAppRunningNotification: true,
+        discardReason:
+            'Notificación de aplicación activa en segundo plano (sin maniobra de ruta)',
+        availableExtras: availableExtras,
+        remoteViewsTexts: remoteViewsTexts,
+      );
+    }
+
+    // 1. Extraer distancia únicamente en título y cuerpo principal (evitando falsos números en subText de tráfico).
     final distanceResult = _extractDistance(title, body, sub);
 
-    // 2. Extraer maniobra y salida de rotonda.
-    final (maneuverType, exitNumber) = _detectManeuver(combinedText);
-
-    // 3. Extraer calle destino si la hay.
-    final street = _extractStreet(title, body);
-
-    // 4. Determinar estado de validez de forma determinista y segura.
-    final status = _determineStatus(
-      combinedText: combinedText,
-      maneuverType: maneuverType,
-      hasDistance: distanceResult != null,
+    // 2. Extraer maniobra giro a giro real y salida de rotonda (evaluando título/cuerpo antes que avisos secundarios).
+    final primaryText = [title, body].where((p) => p.isNotEmpty).join(' — ');
+    final (maneuverType, exitNumber) = _detectManeuver(
+      primaryText.isNotEmpty ? primaryText : combinedText,
     );
+
+    // 3. Clasificar explícitamente si es orientación cardinal ("Head north"), inicio ("Starting navigation"),
+    // recálculo ("Rerouting") o aviso de tráfico sin maniobra giro a giro válida.
+    final nonManeuverReason = maneuverType == ManeuverType.unknown
+        ? _classifyNonManeuverReason(lowerCombined)
+        : null;
+
+    // 4. Extraer calle destino únicamente cuando exista una maniobra real.
+    final street =
+        (maneuverType == ManeuverType.unknown ||
+            _isNonManeuverStatus(lowerCombined))
+        ? null
+        : _extractStreet(title, body);
+
+    // Si la maniobra es llegada a destino y no incluye cifra explícita en metros, usar 0 m.
+    final effectiveDistanceMeters = nonManeuverReason != null
+        ? null
+        : (distanceResult?.meters ??
+              (maneuverType == ManeuverType.arrive ? 0 : null));
+
+    // 5. Determinar estado de validez de forma determinista y segura.
+    final status = nonManeuverReason != null
+        ? BridgeInstructionStatus.unrecognized
+        : _determineStatus(
+            combinedText: combinedText,
+            maneuverType: maneuverType,
+            hasDistance: effectiveDistanceMeters != null,
+          );
+
+    final String? discardReason =
+        nonManeuverReason ??
+        switch (status) {
+          BridgeInstructionStatus.recognized =>
+            effectiveDistanceMeters == null
+                ? 'Maniobra reconocida (${maneuverType.name}) pero sin distancia numérica'
+                : null,
+          BridgeInstructionStatus.incomplete =>
+            'Notificación de navegación parcial (distancia sin verbo de giro reconocible)',
+          BridgeInstructionStatus.unrecognized =>
+            'Notificación sin maniobra ni distancia vial reconocible',
+          BridgeInstructionStatus.stale => 'Instrucción obsoleta o cancelada',
+        };
 
     return BridgeNavigationInstruction(
       source: source,
       maneuverType: maneuverType,
-      distanceMeters: distanceResult?.meters,
-      rawDistanceText: distanceResult?.rawText,
+      distanceMeters: effectiveDistanceMeters,
+      rawDistanceText: effectiveDistanceMeters != null
+          ? distanceResult?.rawText
+          : null,
       rawText: combinedText,
       rawTitle: title.isNotEmpty ? title : null,
       destinationStreet: street,
       roundaboutExit: exitNumber,
       receivedAt: effectiveReceivedAt,
       status: status,
+      isAppRunningNotification: false,
+      discardReason: discardReason,
+      availableExtras: availableExtras,
+      remoteViewsTexts: remoteViewsTexts,
     );
   }
 
@@ -118,6 +184,8 @@ class NavigationInstructionParser {
     String? rawText,
     String? rawSubText,
     DateTime? receivedAt,
+    List<String> availableExtras = const [],
+    List<String> remoteViewsTexts = const [],
   }) {
     return parse(
       rawTitle: rawTitle,
@@ -125,6 +193,8 @@ class NavigationInstructionParser {
       rawSubText: rawSubText,
       source: BridgeSourceType.waze,
       receivedAt: receivedAt,
+      availableExtras: availableExtras,
+      remoteViewsTexts: remoteViewsTexts,
     );
   }
 
@@ -134,6 +204,8 @@ class NavigationInstructionParser {
     String? rawText,
     String? rawSubText,
     DateTime? receivedAt,
+    List<String> availableExtras = const [],
+    List<String> remoteViewsTexts = const [],
   }) {
     return parse(
       rawTitle: rawTitle,
@@ -141,6 +213,8 @@ class NavigationInstructionParser {
       rawSubText: rawSubText,
       source: BridgeSourceType.googleMaps,
       receivedAt: receivedAt,
+      availableExtras: availableExtras,
+      remoteViewsTexts: remoteViewsTexts,
     );
   }
 
@@ -216,9 +290,14 @@ class NavigationInstructionParser {
 
     // 1. Llegada / Destino
     if (lower.contains('has llegado') ||
+        lower.contains('ha llegado') ||
         lower.contains('llegaste') ||
+        lower.contains('llegó a') ||
+        lower.contains('llego a') ||
         lower.contains('llegarás a tu destino') ||
         lower.contains('llegaras a tu destino') ||
+        lower.contains('llegará a su destino') ||
+        lower.contains('llegara a su destino') ||
         lower.contains('destino alcanzado') ||
         lower.contains('you have arrived') ||
         lower.contains('arrived at destination') ||
@@ -229,6 +308,7 @@ class NavigationInstructionParser {
     // 2. Retorno / Cambio de sentido
     if (lower.contains('cambio de sentido') ||
         lower.contains('vuelta en u') ||
+        lower.contains('giro en u') ||
         lower.contains('retorno') ||
         lower.contains('u-turn') ||
         lower.contains('uturn') ||
@@ -249,6 +329,8 @@ class NavigationInstructionParser {
         if (captured != null) {
           exitNumber = int.tryParse(captured);
         }
+      } else {
+        exitNumber = _extractWordRoundaboutExit(lower);
       }
       return (ManeuverType.roundabout, exitNumber);
     }
@@ -263,11 +345,19 @@ class NavigationInstructionParser {
 
     if (lower.contains('suave a la izquierda') ||
         lower.contains('leve a la izquierda') ||
+        lower.contains('levemente a la izquierda') ||
+        lower.contains('ligeramente a la izquierda') ||
         lower.contains('mantente a la izquierda') ||
         lower.contains('manten a la izquierda') ||
+        lower.contains('manténgase a la izquierda') ||
+        lower.contains('mantengase a la izquierda') ||
+        lower.contains('mantente a la izq') ||
         lower.contains('usa el carril izquierdo') ||
+        lower.contains('use el carril izquierdo') ||
         lower.contains('sal a la izquierda') ||
+        lower.contains('salga a la izquierda') ||
         lower.contains('toma la salida a la izquierda') ||
+        lower.contains('tome la salida a la izquierda') ||
         lower.contains('slight left') ||
         lower.contains('keep left') ||
         lower.contains('exit left') ||
@@ -279,6 +369,11 @@ class NavigationInstructionParser {
     if (lower.contains('a la izquierda') ||
         lower.contains('hacia la izquierda') ||
         lower.contains('dobla a la izquierda') ||
+        lower.contains('doble a la izquierda') ||
+        lower.contains('vira a la izquierda') ||
+        lower.contains('vire a la izquierda') ||
+        lower.contains('gira a la izq') ||
+        lower.contains('gire a la izq') ||
         lower.contains('turn left')) {
       return (ManeuverType.left, null);
     }
@@ -293,11 +388,19 @@ class NavigationInstructionParser {
 
     if (lower.contains('suave a la derecha') ||
         lower.contains('leve a la derecha') ||
+        lower.contains('levemente a la derecha') ||
+        lower.contains('ligeramente a la derecha') ||
         lower.contains('mantente a la derecha') ||
         lower.contains('manten a la derecha') ||
+        lower.contains('manténgase a la derecha') ||
+        lower.contains('mantengase a la derecha') ||
+        lower.contains('mantente a la der') ||
         lower.contains('usa el carril derecho') ||
+        lower.contains('use el carril derecho') ||
         lower.contains('sal a la derecha') ||
+        lower.contains('salga a la derecha') ||
         lower.contains('toma la salida a la derecha') ||
+        lower.contains('tome la salida a la derecha') ||
         lower.contains('slight right') ||
         lower.contains('keep right') ||
         lower.contains('exit right') ||
@@ -309,38 +412,44 @@ class NavigationInstructionParser {
     if (lower.contains('a la derecha') ||
         lower.contains('hacia la derecha') ||
         lower.contains('dobla a la derecha') ||
+        lower.contains('doble a la derecha') ||
+        lower.contains('vira a la derecha') ||
+        lower.contains('vire a la derecha') ||
+        lower.contains('gira a la der') ||
+        lower.contains('gire a la der') ||
         lower.contains('turn right')) {
       return (ManeuverType.right, null);
     }
 
-    // 6. Continuar recto / seguir
+    // 6. Continuar recto / seguir derecho
     if (lower.contains('continúa recto') ||
         lower.contains('continua recto') ||
+        lower.contains('continúe recto') ||
+        lower.contains('continue recto') ||
         lower.contains('sigue recto') ||
+        lower.contains('siga recto') ||
+        lower.contains('sigue derecho') ||
+        lower.contains('siga derecho') ||
+        lower.contains('sigue directo') ||
+        lower.contains('continúa derecho') ||
+        lower.contains('continua derecho') ||
+        lower.contains('continúe derecho') ||
         lower.contains('continúa por') ||
         lower.contains('continua por') ||
+        lower.contains('continúe por') ||
         lower.contains('sigue por') ||
+        lower.contains('siga por') ||
         lower.contains('head straight') ||
         lower.contains('continue on') ||
         lower.contains('straight ahead')) {
       return (ManeuverType.straight, null);
     }
 
-    // 7. Salida / Partida inicial
-    if (lower.contains('dirígete hacia') ||
-        lower.contains('dirigete hacia') ||
-        lower.contains('dirígete al ') ||
-        lower.contains('dirigete al ') ||
-        lower.contains('inicia el viaje') ||
-        lower.contains('head north') ||
-        lower.contains('head south') ||
-        lower.contains('head east') ||
-        lower.contains('head west')) {
-      return (ManeuverType.depart, null);
-    }
-
-    // No se reconoció maniobra explícita.
-    // REGLA CRÍTICA: Bajo ningún concepto asignar straight por defecto.
+    // NOTA DE SEGURIDAD FÍSICA:
+    // Las orientaciones cardinales ("Head north", "Head south", "Dirígete al norte")
+    // emitidas al iniciar ruta con la moto estacionada NO son maniobras giro a giro
+    // y NUNCA deben convertirse en seguir recto ni generar paquetes BLE.
+    // REGLA CRÍTICA: Bajo ningún concepto asignar straight o depart por defecto.
     return (ManeuverType.unknown, null);
   }
 
@@ -362,40 +471,140 @@ class NavigationInstructionParser {
     return BridgeInstructionStatus.unrecognized;
   }
 
-  /// Filtra textos habituales en notificaciones de mapas que NO son maniobras.
-  bool _isNonManeuverStatus(String lower) {
-    return lower.contains('buscando gps') ||
+  int? _extractWordRoundaboutExit(String lower) {
+    if (lower.contains('primera salida')) return 1;
+    if (lower.contains('segunda salida')) return 2;
+    if (lower.contains('tercera salida')) return 3;
+    if (lower.contains('cuarta salida')) return 4;
+    if (lower.contains('quinta salida')) return 5;
+    if (lower.contains('sexta salida')) return 6;
+    return null;
+  }
+
+  /// Identifica notificaciones persistentes de aplicación activa en segundo plano
+  /// (ej. "Waze — En ejecución. Toca para abrir." / "Waze — Running. Tap to open.")
+  /// que no contienen instrucciones de ruta.
+  bool _isAppRunningOnlyBanner(String lower) {
+    if (lower.contains('en ejecución') ||
+        lower.contains('en ejecucion') ||
+        lower.contains('toca para abrir') ||
+        lower.contains('toque para abrir') ||
+        lower.contains('tap to open') ||
+        lower.contains('touch to open') ||
+        lower.contains('running.') ||
+        lower.contains('running in background') ||
+        lower.contains('return to waze') ||
+        lower.contains('volver a waze') ||
+        lower.contains('en segundo plano')) {
+      return true;
+    }
+    if (RegExp(r'\bwaze\s*[—\-:]\s*running\b').hasMatch(lower) ||
+        lower.trim() == 'running') {
+      return true;
+    }
+    return false;
+  }
+
+  bool _isCardinalHeadingPrompt(String lower) {
+    return RegExp(
+          r'\bhead\s+(?:north|south|east|west|northeast|northwest|southeast|southwest)\b',
+        ).hasMatch(lower) ||
+        lower.contains('dirígete al ') ||
+        lower.contains('dirigete al ') ||
+        lower.contains('diríjase al ') ||
+        lower.contains('dirijase al ') ||
+        lower.contains('dirígete hacia') ||
+        lower.contains('dirigete hacia') ||
+        lower.contains('diríjase hacia') ||
+        lower.contains('dirijase hacia');
+  }
+
+  String? _classifyNonManeuverReason(String lower) {
+    if (_isCardinalHeadingPrompt(lower)) {
+      return 'Orientación cardinal inicial (ej. "Head north" / brújula): descartada para no inventar flecha recta en el Tripper';
+    }
+    if (lower.contains('starting navigation') ||
+        lower.contains('iniciando navegación') ||
+        lower.contains('iniciando navegacion') ||
+        lower.contains('inicia el viaje')) {
+      return 'Evento de inicio de navegación ("Starting navigation"): esperando primera maniobra giro a giro';
+    }
+    if (lower.contains('rerouting') ||
+        lower.contains('recalculating') ||
+        lower.contains('recalculando') ||
+        lower.contains('calculando ruta')) {
+      return 'Evento de recálculo de ruta ("Rerouting"): descartado para no enviar maniobra ficticia';
+    }
+    if (lower.contains('buscando gps') ||
         lower.contains('buscando señal') ||
         lower.contains('buscando senal') ||
-        lower.contains('calculando ruta') ||
-        lower.contains('recalculando') ||
+        lower.contains('searching for gps') ||
+        lower.contains('waiting for location')) {
+      return 'Estado de búsqueda de señal GPS (sin maniobra)';
+    }
+    if (lower.contains('tráfico') ||
+        lower.contains('trafico') ||
+        lower.contains('traffic') ||
+        lower.contains('faster route') ||
         lower.contains('ruta más rápida') ||
         lower.contains('ruta mas rapida') ||
-        lower.contains('tráfico denso') ||
-        lower.contains('trafico denso') ||
         lower.contains('precaución') ||
         lower.contains('precaucion') ||
         lower.contains('radar fijo') ||
         lower.contains('radar móvil') ||
+        lower.contains('accidente') ||
+        lower.contains('crash') ||
+        lower.contains('delay') ||
+        lower.contains('demora')) {
+      return 'Aviso informativo de tráfico o estado vial (no es maniobra giro a giro)';
+    }
+    return null;
+  }
+
+  /// Filtra textos habituales en notificaciones de mapas que NO son maniobras.
+  bool _isNonManeuverStatus(String lower) {
+    return _isAppRunningOnlyBanner(lower) ||
+        _classifyNonManeuverReason(lower) != null ||
         lower.contains('bienvenido a waze') ||
         lower.contains('sesión iniciada') ||
         lower.contains('sesion iniciada');
   }
 
+  static const List<String> _nonStreetTokens = [
+    'ejecución',
+    'ejecucion',
+    'toca para abrir',
+    'toque para abrir',
+    'segundo plano',
+    'la izquierda',
+    'la derecha',
+    'la rotonda',
+    'la glorieta',
+    'tu destino',
+    'su destino',
+  ];
+
   /// Extracción heurística del nombre de la vía de destino.
   String? _extractStreet(String title, String body) {
     // Comprobar en el cuerpo y en el título
     for (final text in [body, title]) {
+      if (_isNonManeuverStatus(text.toLowerCase())) continue;
       final matches = _streetConnectorRegex.allMatches(text);
       for (final match in matches) {
         final candidate = match.group(1)!.trim();
+        final lowerCandidate = candidate.toLowerCase();
+        if (_nonStreetTokens.any((tok) => lowerCandidate.contains(tok))) {
+          continue;
+        }
         // Si el fragmento comienza con distancia (ej. "400 m hacia Carrera 7")
         if (_meterRegex.hasMatch(candidate) || _kmRegex.hasMatch(candidate)) {
           final innerMatches = _streetConnectorRegex.allMatches(candidate);
           for (final inner in innerMatches) {
             final innerStreet = inner.group(1)!.trim();
+            final lowerInner = innerStreet.toLowerCase();
             if (!_meterRegex.hasMatch(innerStreet) &&
-                !_kmRegex.hasMatch(innerStreet)) {
+                !_kmRegex.hasMatch(innerStreet) &&
+                !_nonStreetTokens.any((tok) => lowerInner.contains(tok))) {
               return innerStreet.replaceAll(RegExp(r'[,.\-]+$'), '').trim();
             }
           }

@@ -110,9 +110,7 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
       _simulator = widget.simulatorService!;
       _ownsSimulator = false;
     } else {
-      _simulator = NavigationSimulatorService(
-        bleService: widget.bleService,
-      );
+      _simulator = NavigationSimulatorService(bleService: widget.bleService);
       _ownsSimulator = true;
     }
 
@@ -945,8 +943,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isReady
                       ? (widget.bleService.isTestManeuverActive
-                          ? Colors.orangeAccent
-                          : AppColors.primaryGold)
+                            ? Colors.orangeAccent
+                            : AppColors.primaryGold)
                       : Colors.white12,
                   foregroundColor: Colors.black,
                   minimumSize: const Size(0, 38),
@@ -964,7 +962,10 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                   widget.bleService.isTestManeuverActive
                       ? 'Detener prueba pantalla (modo reposo)'
                       : 'Enviar maniobra prueba (500m recto con refresco 2s)',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onPressed: isReady
                     ? () async {
@@ -976,8 +977,8 @@ class _TripperDiagnosticScreenState extends State<TripperDiagnosticScreen> {
                               content: Text(
                                 ok
                                     ? (widget.bleService.isTestManeuverActive
-                                        ? 'Prueba iniciada: Maniobra 500m recto en pantalla activa (refresco cada 2s para evitar watchdog).'
-                                        : 'Prueba finalizada: Tramas de pantalla detenidas. Enlace BLE en reposo con PING_FW.')
+                                          ? 'Prueba iniciada: Maniobra 500m recto en pantalla activa (refresco cada 2s para evitar watchdog).'
+                                          : 'Prueba finalizada: Tramas de pantalla detenidas. Enlace BLE en reposo con PING_FW.')
                                     : 'Fallo al procesar maniobra de prueba.',
                               ),
                               backgroundColor: ok

@@ -29,10 +29,6 @@ subprojects {
                     } catch (_: Exception) {}
                 }
             }
-
-            tasks.matching { it.name.contains("AarMetadata") && project.name == "file_picker" }.configureEach {
-                enabled = false
-            }
         }
     }
 }

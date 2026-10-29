@@ -107,10 +107,9 @@ class NavigationSimulatorService extends ChangeNotifier {
        _routeName = routeName,
        _tickInterval = tickInterval,
        _transmitToBle = transmitToBleDefault,
-       _virtualPosition =
-           (customGeometry != null && customGeometry.isNotEmpty)
-               ? customGeometry.first
-               : PereiraSantaRosaRoute.origin {
+       _virtualPosition = (customGeometry != null && customGeometry.isNotEmpty)
+           ? customGeometry.first
+           : PereiraSantaRosaRoute.origin {
     _initGeometryAndDistances();
     _resetStepDistance();
     _updateVirtualPositionAndCurvature();
@@ -189,8 +188,7 @@ class NavigationSimulatorService extends ChangeNotifier {
       List.unmodifiable(_traceHistory);
   SimulationTraceEvent? get lastTraceEvent =>
       _traceHistory.isNotEmpty ? _traceHistory.last : null;
-  Stream<SimulationTraceEvent> get traceStream =>
-      _traceStreamController.stream;
+  Stream<SimulationTraceEvent> get traceStream => _traceStreamController.stream;
   int? get lastBleTransmittedDistance => _lastBleTransmittedDistance;
 
   @override
@@ -365,7 +363,9 @@ class NavigationSimulatorService extends ChangeNotifier {
     if (_currentStepIndex < _steps.length - 1) {
       _currentStepIndex++;
       _resetStepDistance();
-      _syncCurrentManeuver(reason: 'Paso manual adelante (#${currentStep.stepNumber})');
+      _syncCurrentManeuver(
+        reason: 'Paso manual adelante (#${currentStep.stepNumber})',
+      );
     } else {
       _currentVirtualDistanceMeters = 0.0;
       _status = SimulationStatus.completed;
@@ -393,7 +393,9 @@ class NavigationSimulatorService extends ChangeNotifier {
       if (_status == SimulationStatus.completed) {
         _status = SimulationStatus.paused;
       }
-      _syncCurrentManeuver(reason: 'Paso manual atrás (#${currentStep.stepNumber})');
+      _syncCurrentManeuver(
+        reason: 'Paso manual atrás (#${currentStep.stepNumber})',
+      );
       _updateVirtualPositionAndCurvature();
       _updateTrafficLight();
       notifyListeners();
@@ -406,7 +408,9 @@ class NavigationSimulatorService extends ChangeNotifier {
     _currentStepIndex = index;
     _resetStepDistance();
     _lastBleTransmittedDistance = null;
-    _syncCurrentManeuver(reason: 'Salto directo a paso #${currentStep.stepNumber}');
+    _syncCurrentManeuver(
+      reason: 'Salto directo a paso #${currentStep.stepNumber}',
+    );
     _updateVirtualPositionAndCurvature();
     _updateTrafficLight();
     notifyListeners();
@@ -476,8 +480,10 @@ class NavigationSimulatorService extends ChangeNotifier {
           SimulatedManeuverStep(
             stepNumber: i + 1,
             maneuver: m,
-            initialDistanceMeters:
-                (m.distanceMeters?.toInt() ?? 200).clamp(50, 10000),
+            initialDistanceMeters: (m.distanceMeters?.toInt() ?? 200).clamp(
+              50,
+              10000,
+            ),
             isSupportedByTripper: isSupported,
             tripperManeuverCode: code,
             compatibilityNote: note,
@@ -494,7 +500,8 @@ class NavigationSimulatorService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _routeLoadError = 'No se pudo conectar con OSRM: $e. Se conserva la ruta local.';
+      _routeLoadError =
+          'No se pudo conectar con OSRM: $e. Se conserva la ruta local.';
       _isLoadingRoute = false;
       notifyListeners();
       return false;
@@ -652,14 +659,17 @@ class NavigationSimulatorService extends ChangeNotifier {
     final lastDist = _lastBleTransmittedDistance;
     final lastTime = _lastBleTransmissionTime;
 
-    final distanceDelta =
-        lastDist == null ? double.infinity : (lastDist - distInt).abs().toDouble();
-    final timeDeltaMs =
-        lastTime == null ? 999999 : now.difference(lastTime).inMilliseconds;
+    final distanceDelta = lastDist == null
+        ? double.infinity
+        : (lastDist - distInt).abs().toDouble();
+    final timeDeltaMs = lastTime == null
+        ? 999999
+        : now.difference(lastTime).inMilliseconds;
 
     // Se actualiza si la distancia cambió >= 5m (o en saltos >= 20m)
     // y han transcurrido al menos 750 ms (para cadencia prudente que no sature BLE).
-    final shouldTransmit = (lastDist == null) ||
+    final shouldTransmit =
+        (lastDist == null) ||
         (distanceDelta >= _bleDistanceUpdateThresholdMeters &&
             (timeDeltaMs >= 750 || distanceDelta >= 20.0));
 
@@ -677,7 +687,8 @@ class NavigationSimulatorService extends ChangeNotifier {
     int nextManeuver = TripperProtocol.nextManeuverNone;
     if (distInt < 100 && _currentStepIndex + 1 < _steps.length) {
       final nextStep = _steps[_currentStepIndex + 1];
-      if (nextStep.isSupportedByTripper && nextStep.tripperManeuverCode != null) {
+      if (nextStep.isSupportedByTripper &&
+          nextStep.tripperManeuverCode != null) {
         nextManeuver = nextStep.tripperManeuverCode!;
       }
     }
@@ -753,7 +764,9 @@ class NavigationSimulatorService extends ChangeNotifier {
       final totalGeom = _cumulativeDistances.last;
       final totalStepsDist = totalRouteDistanceMeters;
       // Proporción de avance sobre la geometría
-      final ratio = totalStepsDist > 0 ? (_traveledDistanceMeters / totalStepsDist).clamp(0.0, 1.0) : 0.0;
+      final ratio = totalStepsDist > 0
+          ? (_traveledDistanceMeters / totalStepsDist).clamp(0.0, 1.0)
+          : 0.0;
       final geomDistance = ratio * totalGeom;
 
       _virtualPosition = RoadCurvatureEstimator.interpolateAtDistance(
@@ -851,7 +864,8 @@ class NavigationSimulatorService extends ChangeNotifier {
         return ok;
       } catch (e) {
         _lastError = e.toString();
-        _lastTransmissionResult = 'Excepción al emitir pantalla de resguardo: $e';
+        _lastTransmissionResult =
+            'Excepción al emitir pantalla de resguardo: $e';
         return false;
       }
     }
@@ -859,7 +873,8 @@ class NavigationSimulatorService extends ChangeNotifier {
     int nextManeuver = TripperProtocol.nextManeuverNone;
     if (distInt < 100 && _currentStepIndex + 1 < _steps.length) {
       final nextStep = _steps[_currentStepIndex + 1];
-      if (nextStep.isSupportedByTripper && nextStep.tripperManeuverCode != null) {
+      if (nextStep.isSupportedByTripper &&
+          nextStep.tripperManeuverCode != null) {
         nextManeuver = nextStep.tripperManeuverCode!;
       }
     }
@@ -1028,8 +1043,7 @@ class NavigationSimulatorService extends ChangeNotifier {
         initialDistanceMeters: 80,
         isSupportedByTripper: true,
         tripperManeuverCode: TripperProtocol.maneuverTurnLeft,
-        compatibilityNote:
-            'Código documentado 0x14 (Giro a la izquierda)',
+        compatibilityNote: 'Código documentado 0x14 (Giro a la izquierda)',
       ),
 
       // 8. Llegada al destino

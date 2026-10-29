@@ -46,7 +46,8 @@ class TripperDevice {
   }) {
     final trimmedName = name.trim();
     final cleanName = trimmedName.toUpperCase();
-    final bool isExactReDisp = cleanName == 'RE_DISP' || cleanName.startsWith('RE_DISP');
+    final bool isExactReDisp =
+        cleanName == 'RE_DISP' || cleanName.startsWith('RE_DISP');
     final bool hasNameMatch =
         isExactReDisp ||
         cleanName.contains('ROYAL') ||
@@ -65,7 +66,8 @@ class TripperDevice {
     final bool hasNxpMac = id.trim().toUpperCase().startsWith('00:60:37');
 
     // UUIDs comunes en módulos UART/Serie o referencias de la industria
-    final bool hasKnownSerialUuid = hasNxpTripperUuid ||
+    final bool hasKnownSerialUuid =
+        hasNxpTripperUuid ||
         serviceUuids.any((u) {
           final norm = u.toLowerCase();
           return norm.contains('ffe0') ||

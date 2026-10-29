@@ -42,6 +42,19 @@ class BridgeNavigationInstruction {
   /// Estado de clasificación y completitud de la instrucción.
   final BridgeInstructionStatus status;
 
+  /// Indica si la notificación corresponde únicamente al estado de aplicación en ejecución
+  /// (ej. "Waze — En ejecución. Toca para abrir.") y no a una instrucción de ruta.
+  final bool isAppRunningNotification;
+
+  /// Motivo técnico explícito si la notificación fue descartada para transmisión BLE.
+  final String? discardReason;
+
+  /// Claves de `Notification.extras` / vistas presentes en la notificación nativa (sin datos personales).
+  final List<String> availableExtras;
+
+  /// Textos extraídos de `RemoteViews` personalizados en Android, si existían.
+  final List<String> remoteViewsTexts;
+
   const BridgeNavigationInstruction({
     required this.source,
     required this.maneuverType,
@@ -53,6 +66,10 @@ class BridgeNavigationInstruction {
     this.rawTitle,
     this.destinationStreet,
     this.roundaboutExit,
+    this.isAppRunningNotification = false,
+    this.discardReason,
+    this.availableExtras = const [],
+    this.remoteViewsTexts = const [],
   });
 
   /// Indica si la instrucción fue plenamente reconocida y sus datos son válidos.
@@ -99,6 +116,10 @@ class BridgeNavigationInstruction {
     Object? roundaboutExit = _sentinel,
     DateTime? receivedAt,
     BridgeInstructionStatus? status,
+    bool? isAppRunningNotification,
+    Object? discardReason = _sentinel,
+    List<String>? availableExtras,
+    List<String>? remoteViewsTexts,
   }) {
     return BridgeNavigationInstruction(
       source: source ?? this.source,
@@ -121,6 +142,13 @@ class BridgeNavigationInstruction {
           : roundaboutExit as int?,
       receivedAt: receivedAt ?? this.receivedAt,
       status: status ?? this.status,
+      isAppRunningNotification:
+          isAppRunningNotification ?? this.isAppRunningNotification,
+      discardReason: identical(discardReason, _sentinel)
+          ? this.discardReason
+          : discardReason as String?,
+      availableExtras: availableExtras ?? this.availableExtras,
+      remoteViewsTexts: remoteViewsTexts ?? this.remoteViewsTexts,
     );
   }
 

@@ -23,15 +23,18 @@ class NominatimGeocodingService implements GeocodingService {
   final http.Client _client;
   final String _userAgent;
   final OsmPoiService _osmPoiService;
+  final Duration _requestTimeout;
 
   NominatimGeocodingService({
     http.Client? client,
     String userAgent =
         'REstelarNavigationApp/1.0 (contact: restelar@roadcompanion.app)',
     OsmPoiService? osmPoiService,
+    Duration requestTimeout = const Duration(seconds: 8),
   }) : _client = client ?? http.Client(),
        _userAgent = userAgent,
-       _osmPoiService = osmPoiService ?? OsmPoiService(client: client);
+       _osmPoiService = osmPoiService ?? OsmPoiService(client: client),
+       _requestTimeout = requestTimeout;
 
   OsmPoiService get osmPoiService => _osmPoiService;
 
@@ -99,7 +102,14 @@ class NominatimGeocodingService implements GeocodingService {
             uri,
             headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(_requestTimeout);
+
+      if (response.statusCode == 429) {
+        throw HttpException(
+          'Límite de solicitudes excedido en el proveedor de búsqueda (HTTP 429). Reintenta en unos segundos.',
+          uri: uri,
+        );
+      }
 
       if (response.statusCode != 200) {
         throw HttpException(
@@ -109,7 +119,40 @@ class NominatimGeocodingService implements GeocodingService {
       }
 
       final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
-      final results = _parseDestinationList(list);
+      var results = _deduplicateDestinations(_parseDestinationList(list));
+
+      // Fallback controlado: si la consulta original no arrojó resultados y contiene
+      // abreviaturas viales colombianas (Cra, Cl, Av, #) o prefijos "Barrio"/"Vereda",
+      // reintentar con la consulta normalizada.
+      if (results.isEmpty) {
+        final normalizedFallback = normalizeColombianQuery(cleanQuery);
+        if (normalizedFallback.length >= 2 &&
+            normalizedFallback.toLowerCase() != cleanQuery.toLowerCase()) {
+          final fallbackParams = Map<String, String>.from(queryParams)
+            ..['q'] = normalizedFallback;
+          final fallbackUri = Uri.https(
+            'nominatim.openstreetmap.org',
+            '/search',
+            fallbackParams,
+          );
+          final fallbackResp = await _client
+              .get(
+                fallbackUri,
+                headers: {
+                  'User-Agent': _userAgent,
+                  'Accept': 'application/json',
+                },
+              )
+              .timeout(const Duration(seconds: 8));
+          if (fallbackResp.statusCode == 200) {
+            final List<dynamic> fallbackList =
+                jsonDecode(fallbackResp.body) as List<dynamic>;
+            results = _deduplicateDestinations(
+              _parseDestinationList(fallbackList),
+            );
+          }
+        }
+      }
 
       NavigationDiagnosticLogger.logSearchResults(
         query: cleanQuery,
@@ -124,6 +167,73 @@ class NominatimGeocodingService implements GeocodingService {
         'Tiempo de espera agotado al conectar con el servidor de búsqueda.',
       );
     }
+  }
+
+  /// Normaliza abreviaturas de nomenclatura vial colombiana y prefijos de barrio/vereda
+  /// para mejorar coincidencias en OpenStreetMap Nominatim cuando la búsqueda literal no arroja resultados.
+  static String normalizeColombianQuery(String raw) {
+    var s = raw.trim();
+    if (s.isEmpty) return s;
+
+    // Expandir abreviaturas viales al inicio o tras coma/espacio
+    s = s.replaceAllMapped(
+      RegExp(r'\b(cra|kr|kra)\.?\s*(\d+[a-zA-Z]?)', caseSensitive: false),
+      (m) => 'Carrera ${m.group(2)}',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\b(cll|cl)\.?\s*(\d+[a-zA-Z]?)', caseSensitive: false),
+      (m) => 'Calle ${m.group(2)}',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\b(av|avda)\.?\s+', caseSensitive: false),
+      (_) => 'Avenida ',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\b(dg|diag)\.?\s*(\d+[a-zA-Z]?)', caseSensitive: false),
+      (m) => 'Diagonal ${m.group(2)}',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\b(tv|tr|transv)\.?\s*(\d+[a-zA-Z]?)', caseSensitive: false),
+      (m) => 'Transversal ${m.group(2)}',
+    );
+
+    // Simplificar placas domiciliarias "# 45-12" o "No. 45-12" que Nominatim no indexa
+    s = s.replaceAll(
+      RegExp(
+        r'(?:\s*(?:#|no\.?|n°|nro\.?)\s*\d+[a-zA-Z]?(?:\s*-\s*\d+)?)'
+        r'|(?:\s+\d+\s*-\s*\d+)',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    // Remover prefijos genéricos "Barrio " o "Urbanización " si impiden hallar el topónimo en OSM
+    s = s.replaceFirst(
+      RegExp(r'^(barrio|urbanizaci[oó]n|urb\.?)\s+', caseSensitive: false),
+      '',
+    );
+
+    // Limpiar espacios múltiples y comas sueltas
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    s = s.replaceAll(RegExp(r'^,\s*|,\s*$'), '').trim();
+    return s;
+  }
+
+  List<Destination> _deduplicateDestinations(List<Destination> items) {
+    final deduplicated = <Destination>[];
+    final seenIds = <String>{};
+    for (final dest in items) {
+      if (!seenIds.add(dest.id)) continue;
+      final isSpatialDuplicate = deduplicated.any(
+        (existing) =>
+            existing.title.toLowerCase() == dest.title.toLowerCase() &&
+            existing.coordinates.distanceTo(dest.coordinates) < 25.0,
+      );
+      if (!isSpatialDuplicate) {
+        deduplicated.add(dest);
+      }
+    }
+    return deduplicated;
   }
 
   @override

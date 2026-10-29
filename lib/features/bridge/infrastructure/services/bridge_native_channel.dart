@@ -11,6 +11,8 @@ class BridgeNotificationEvent {
   final String? title;
   final String? text;
   final String? subText;
+  final List<String> availableExtras;
+  final List<String> remoteViewsTexts;
   final DateTime timestamp;
   final bool isRemoved;
 
@@ -20,6 +22,8 @@ class BridgeNotificationEvent {
     this.title,
     this.text,
     this.subText,
+    this.availableExtras = const [],
+    this.remoteViewsTexts = const [],
     this.isRemoved = false,
   });
 
@@ -32,11 +36,23 @@ class BridgeNotificationEvent {
         ? DateTime.fromMillisecondsSinceEpoch(rawTimestamp.toInt())
         : DateTime.now();
 
+    final rawExtras = map['availableExtras'];
+    final availableExtras = rawExtras is List
+        ? rawExtras.map((e) => e.toString()).toList(growable: false)
+        : const <String>[];
+
+    final rawRemote = map['remoteViewsTexts'];
+    final remoteViewsTexts = rawRemote is List
+        ? rawRemote.map((e) => e.toString()).toList(growable: false)
+        : const <String>[];
+
     return BridgeNotificationEvent(
       source: source,
       title: map['title'] as String?,
       text: map['text'] as String?,
       subText: map['subText'] as String?,
+      availableExtras: availableExtras,
+      remoteViewsTexts: remoteViewsTexts,
       timestamp: timestamp,
       isRemoved: map['isRemoved'] as bool? ?? false,
     );
@@ -52,8 +68,11 @@ class BridgeNativeChannel {
   static const String _controlChannelName = 'es.estela/bridge_controls';
   static const String _eventChannelName = 'es.estela/navigation_notifications';
 
+  static Stream<BridgeNotificationEvent>? _sharedDefaultNotificationStream;
+
   final MethodChannel _controlChannel;
   final EventChannel _eventChannel;
+  final bool _usesDefaultEventChannel;
   Stream<BridgeNotificationEvent>? _cachedStream;
 
   BridgeNativeChannel({
@@ -61,7 +80,8 @@ class BridgeNativeChannel {
     EventChannel? eventChannel,
   }) : _controlChannel =
            controlChannel ?? const MethodChannel(_controlChannelName),
-       _eventChannel = eventChannel ?? const EventChannel(_eventChannelName);
+       _eventChannel = eventChannel ?? const EventChannel(_eventChannelName),
+       _usesDefaultEventChannel = eventChannel == null;
 
   /// Consulta si el usuario ha habilitado el acceso a notificaciones para ESTELA.
   Future<BridgePermissionStatus> checkNotificationPermission() async {
@@ -135,7 +155,18 @@ class BridgeNativeChannel {
   }
 
   /// Flujo continuo de eventos de notificación emitidos por Google Maps o Waze.
+  ///
+  /// Cuando se utiliza el canal nativo por defecto, comparte un único broadcast stream
+  /// para que múltiples suscriptores en Flutter no sobrescriban ni cancelen prematuramente
+  /// el `StreamHandler` nativo en Android.
   Stream<BridgeNotificationEvent> get notificationStream {
+    if (_usesDefaultEventChannel) {
+      return _sharedDefaultNotificationStream ??= _eventChannel
+          .receiveBroadcastStream()
+          .where((data) => data is Map)
+          .map((data) => BridgeNotificationEvent.fromMap(data as Map))
+          .asBroadcastStream();
+    }
     _cachedStream ??= _eventChannel
         .receiveBroadcastStream()
         .where((data) => data is Map)

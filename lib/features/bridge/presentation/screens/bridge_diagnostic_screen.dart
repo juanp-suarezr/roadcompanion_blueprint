@@ -3,6 +3,7 @@ import '../../../../app/state/app_settings_state.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../domain/entities/maneuver_type.dart';
 import '../../../navigation/domain/services/navigation_source.dart';
+import '../../../navigation/infrastructure/services/flutter_blue_plus_tripper_service.dart';
 import '../../domain/entities/bridge_instruction_status.dart';
 import '../../domain/entities/bridge_navigation_instruction.dart';
 import '../../domain/entities/bridge_source_type.dart';
@@ -38,7 +39,9 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
     if (widget.controller != null) {
       _controller = widget.controller!;
     } else {
-      _controller = BridgeDiagnosticController();
+      _controller = BridgeDiagnosticController(
+        bleService: FlutterBluePlusTripperService(),
+      );
       _isInternalController = true;
     }
     _controller.initialize();
@@ -51,9 +54,11 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
       final scope = context
           .dependOnInheritedWidgetOfExactType<AppSettingsScope>();
       final settings = scope?.notifier;
-      if (settings != null &&
-          _controller.selectedSource != settings.selectedNavigationSource) {
-        _controller.selectNavigationSource(settings.selectedNavigationSource);
+      if (settings != null) {
+        _controller.selectNavigationSource(
+          settings.selectedNavigationSource,
+          strictFilter: true,
+        );
       }
     } catch (_) {}
   }
@@ -539,6 +544,16 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
                           fontSize: 13,
                         ),
                       ),
+                    if (instruction.discardReason != null)
+                      Text(
+                        instruction.discardReason!,
+                        style: TextStyle(
+                          color: instruction.isAppRunningNotification
+                              ? AppColors.secondaryText
+                              : AppColors.warning,
+                          fontSize: 11.5,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -593,6 +608,42 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
                   style: const TextStyle(
                     color: AppColors.coldWhite,
                     fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Paquete: ${instruction.source.packageName.isNotEmpty ? instruction.source.packageName : instruction.source.displayName}',
+                  style: const TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 10.5,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  'Extras: ${instruction.availableExtras.isEmpty ? "(no reportados)" : instruction.availableExtras.join(", ")}',
+                  style: const TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 10.5,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  'RemoteViews: ${instruction.remoteViewsTexts.isEmpty ? "(sin textos adicionales)" : instruction.remoteViewsTexts.join(" | ")}',
+                  style: const TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 10.5,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  'Decisión: ${instruction.isCompatibleWithTripper ? "ACEPTADO -> Maniobra ${instruction.maneuverType.name} (${instruction.distanceMeters ?? 0} m)" : "DESCARTADO -> ${instruction.discardReason ?? instruction.status.name}"}',
+                  style: TextStyle(
+                    color: instruction.isCompatibleWithTripper
+                        ? AppColors.success
+                        : AppColors.warning,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
                     fontFamily: 'monospace',
                   ),
                 ),

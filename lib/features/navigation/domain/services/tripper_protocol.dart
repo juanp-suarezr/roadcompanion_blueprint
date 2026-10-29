@@ -243,7 +243,6 @@ class TripperProtocol {
     }
   }
 
-
   /// Construye el paquete de navegación principal (CMD_NAVIGATE = 0x10 0x11).
   ///
   /// Campos:
@@ -275,8 +274,7 @@ class TripperProtocol {
     pkt[3] = dist[0];
     pkt[4] = dist[1];
     pkt[5] = dist[2];
-    pkt[6] =
-        (byte6 ?? distanceIntensity(distanceMeters, nightMode)) & 0xFF;
+    pkt[6] = (byte6 ?? distanceIntensity(distanceMeters, nightMode)) & 0xFF;
     pkt[7] = nextManeuver & 0xFF;
 
     final nd = nextDistanceMeters < 0
@@ -383,7 +381,6 @@ class TripperProtocol {
     }
   }
 
-
   /// Construye una trama de pantalla de navegación segura (0x10 0x11) para transiciones o pasos
   /// no mapeados, utilizando el código neutral de recalculando/en tránsito (0x1C) para evitar
   /// la desconexión del watchdog del hardware (~5s) sin falsear flechas direccionales erróneas.
@@ -461,4 +458,3 @@ enum TripperOpcodeStatus {
   final String label;
   const TripperOpcodeStatus(this.label);
 }
-

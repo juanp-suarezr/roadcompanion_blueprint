@@ -56,10 +56,9 @@ class NavigationSimulationPanel extends StatelessWidget {
             color: AppColors.backgroundCard,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color:
-                  isRunning
-                      ? Colors.greenAccent.withValues(alpha: 0.5)
-                      : AppColors.cardBorder,
+              color: isRunning
+                  ? Colors.greenAccent.withValues(alpha: 0.5)
+                  : AppColors.cardBorder,
               width: 1.2,
             ),
           ),
@@ -219,7 +218,10 @@ class NavigationSimulationPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: activeColor.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: activeColor.withValues(alpha: 0.4), width: 1.5),
+        border: Border.all(
+          color: activeColor.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,16 +305,15 @@ class NavigationSimulationPanel extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: isActive ? color : color.withValues(alpha: 0.18),
-          boxShadow:
-              isActive
-                  ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.7),
-                      blurRadius: 8,
-                      spreadRadius: 1.5,
-                    ),
-                  ]
-                  : null,
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.7),
+                    blurRadius: 8,
+                    spreadRadius: 1.5,
+                  ),
+                ]
+              : null,
           border: Border.all(
             color: isActive ? Colors.white : Colors.white12,
             width: isActive ? 1.2 : 0.8,
@@ -327,7 +328,9 @@ class NavigationSimulationPanel extends StatelessWidget {
     final curvature = simulator.currentCurvature;
     final isSupported = step.isSupportedByTripper;
     final deltaDeg = curvature.bearingDeltaDegrees;
-    final deltaSign = deltaDeg > 0 ? '+${deltaDeg.toStringAsFixed(1)}°' : '${deltaDeg.toStringAsFixed(1)}°';
+    final deltaSign = deltaDeg > 0
+        ? '+${deltaDeg.toStringAsFixed(1)}°'
+        : '${deltaDeg.toStringAsFixed(1)}°';
 
     IconData maneuverIcon;
     switch (step.maneuver.type) {
@@ -367,10 +370,9 @@ class NavigationSimulationPanel extends StatelessWidget {
         color: AppColors.surfaceAccent,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color:
-              isSupported
-                  ? AppColors.primaryGold.withValues(alpha: 0.3)
-                  : Colors.orangeAccent.withValues(alpha: 0.3),
+          color: isSupported
+              ? AppColors.primaryGold.withValues(alpha: 0.3)
+              : Colors.orangeAccent.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -382,18 +384,16 @@ class NavigationSimulationPanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color:
-                      isSupported
-                          ? AppColors.primaryGold.withValues(alpha: 0.15)
-                          : Colors.orangeAccent.withValues(alpha: 0.15),
+                  color: isSupported
+                      ? AppColors.primaryGold.withValues(alpha: 0.15)
+                      : Colors.orangeAccent.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   maneuverIcon,
-                  color:
-                      isSupported
-                          ? AppColors.primaryGold
-                          : Colors.orangeAccent,
+                  color: isSupported
+                      ? AppColors.primaryGold
+                      : Colors.orangeAccent,
                   size: 22,
                 ),
               ),
@@ -419,10 +419,9 @@ class NavigationSimulationPanel extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color:
-                                isSupported
-                                    ? Colors.green.withValues(alpha: 0.15)
-                                    : Colors.orange.withValues(alpha: 0.15),
+                            color: isSupported
+                                ? Colors.green.withValues(alpha: 0.15)
+                                : Colors.orange.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -430,10 +429,9 @@ class NavigationSimulationPanel extends StatelessWidget {
                                 ? 'TRIPPER CMD 0x${step.tripperManeuverCode?.toRadixString(16).toUpperCase().padLeft(2, "0")}'
                                 : 'SÓLO LOCAL',
                             style: TextStyle(
-                              color:
-                                  isSupported
-                                      ? Colors.greenAccent
-                                      : Colors.orangeAccent,
+                              color: isSupported
+                                  ? Colors.greenAccent
+                                  : Colors.orangeAccent,
                               fontSize: 9.5,
                               fontWeight: FontWeight.bold,
                             ),
@@ -469,7 +467,9 @@ class NavigationSimulationPanel extends StatelessWidget {
               children: [
                 Icon(
                   curvature.type.icon,
-                  color: curvature.type.isCurve ? AppColors.secondaryCyan : AppColors.textSecondary,
+                  color: curvature.type.isCurve
+                      ? AppColors.secondaryCyan
+                      : AppColors.textSecondary,
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -540,14 +540,12 @@ class NavigationSimulationPanel extends StatelessWidget {
     final remainingM = simulator.totalRemainingDistanceMeters.toInt();
     final traveledM = simulator.traveledDistanceMeters.toInt();
 
-    final remainingStr =
-        remainingM >= 1000
-            ? '${(remainingM / 1000.0).toStringAsFixed(1)} km'
-            : '$remainingM m';
-    final traveledStr =
-        traveledM >= 1000
-            ? '${(traveledM / 1000.0).toStringAsFixed(1)} km'
-            : '$traveledM m';
+    final remainingStr = remainingM >= 1000
+        ? '${(remainingM / 1000.0).toStringAsFixed(1)} km'
+        : '$remainingM m';
+    final traveledStr = traveledM >= 1000
+        ? '${(traveledM / 1000.0).toStringAsFixed(1)} km'
+        : '$traveledM m';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,25 +601,23 @@ class NavigationSimulationPanel extends StatelessWidget {
         const Spacer(),
         Wrap(
           spacing: 6,
-          children:
-              SimulationSpeed.values.map((spd) {
-                final isSelected = simulator.speed == spd;
-                return ChoiceChip(
-                  label: Text(
-                    spd.displayName,
-                    style: TextStyle(
-                      color: isSelected ? Colors.black : AppColors.textPrimary,
-                      fontSize: 11,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  selected: isSelected,
-                  selectedColor: AppColors.primaryGold,
-                  backgroundColor: Colors.white10,
-                  onSelected: (_) => simulator.setSpeed(spd),
-                );
-              }).toList(),
+          children: SimulationSpeed.values.map((spd) {
+            final isSelected = simulator.speed == spd;
+            return ChoiceChip(
+              label: Text(
+                spd.displayName,
+                style: TextStyle(
+                  color: isSelected ? Colors.black : AppColors.textPrimary,
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              selected: isSelected,
+              selectedColor: AppColors.primaryGold,
+              backgroundColor: Colors.white10,
+              onSelected: (_) => simulator.setSpeed(spd),
+            );
+          }).toList(),
         ),
       ],
     );
@@ -640,17 +636,18 @@ class NavigationSimulationPanel extends StatelessWidget {
         IconButton(
           tooltip: 'Maniobra anterior',
           icon: const Icon(Icons.skip_previous_rounded),
-          color:
-              simulator.currentStepIndex > 0
-                  ? AppColors.textPrimary
-                  : Colors.white24,
-          onPressed:
-              simulator.currentStepIndex > 0 ? simulator.stepPrevious : null,
+          color: simulator.currentStepIndex > 0
+              ? AppColors.textPrimary
+              : Colors.white24,
+          onPressed: simulator.currentStepIndex > 0
+              ? simulator.stepPrevious
+              : null,
         ),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-                isRunning ? Colors.orangeAccent : AppColors.primaryGold,
+            backgroundColor: isRunning
+                ? Colors.orangeAccent
+                : AppColors.primaryGold,
             foregroundColor: Colors.black,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             shape: RoundedRectangleBorder(
@@ -669,14 +666,12 @@ class NavigationSimulationPanel extends StatelessWidget {
         IconButton(
           tooltip: 'Siguiente maniobra',
           icon: const Icon(Icons.skip_next_rounded),
-          color:
-              simulator.currentStepIndex < simulator.totalSteps - 1
-                  ? AppColors.textPrimary
-                  : Colors.white24,
-          onPressed:
-              simulator.currentStepIndex < simulator.totalSteps - 1
-                  ? simulator.stepNext
-                  : null,
+          color: simulator.currentStepIndex < simulator.totalSteps - 1
+              ? AppColors.textPrimary
+              : Colors.white24,
+          onPressed: simulator.currentStepIndex < simulator.totalSteps - 1
+              ? simulator.stepNext
+              : null,
         ),
         IconButton(
           tooltip: 'Detener simulación',
@@ -717,10 +712,9 @@ class NavigationSimulationPanel extends StatelessWidget {
                       ? 'Conectado a RE_DISP. Solo maniobras con opcode validado se transmitirán.'
                       : 'Tripper Pod no listo. La simulación avanzará localmente.',
                   style: TextStyle(
-                    color:
-                        isBleReady
-                            ? Colors.greenAccent
-                            : AppColors.textSecondary,
+                    color: isBleReady
+                        ? Colors.greenAccent
+                        : AppColors.textSecondary,
                     fontSize: 10.5,
                   ),
                 ),
@@ -743,10 +737,9 @@ class NavigationSimulationPanel extends StatelessWidget {
     final lastInst = simulator.lastSimulatedInstruction ?? 'Sin instrucciones';
     final lastRes =
         simulator.lastTransmissionResult ?? 'En espera de ejecución';
-    final timeStr =
-        simulator.lastTransmissionTime != null
-            ? simulator.lastTransmissionTime!.toIso8601String().substring(11, 19)
-            : 'N/A';
+    final timeStr = simulator.lastTransmissionTime != null
+        ? simulator.lastTransmissionTime!.toIso8601String().substring(11, 19)
+        : 'N/A';
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -773,8 +766,16 @@ class NavigationSimulationPanel extends StatelessWidget {
             dev != null ? '${dev.name} (${dev.id})' : 'Desconectado',
             dev != null ? Colors.greenAccent : AppColors.textSecondary,
           ),
-          _buildTelemetryRow('Instrucción simulada:', lastInst, AppColors.textPrimary),
-          _buildTelemetryRow('Última trama HEX:', lastHex, AppColors.secondaryCyan),
+          _buildTelemetryRow(
+            'Instrucción simulada:',
+            lastInst,
+            AppColors.textPrimary,
+          ),
+          _buildTelemetryRow(
+            'Última trama HEX:',
+            lastHex,
+            AppColors.secondaryCyan,
+          ),
           _buildTelemetryRow('Hora envío:', timeStr, AppColors.textSecondary),
           _buildTelemetryRow('Resultado GATT:', lastRes, Colors.white70),
           _buildTelemetryRow(

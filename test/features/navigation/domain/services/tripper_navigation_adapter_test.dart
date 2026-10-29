@@ -10,29 +10,31 @@ void main() {
   group('TripperNavigationAdapter - Adaptación Waze / REStelar a Tripper', () {
     const adapter = TripperNavigationAdapter();
 
-    test('Convierte exitosamente instrucción reconocida de Waze con giro y distancia',
-        () {
-      final instruction = BridgeNavigationInstruction(
-        source: BridgeSourceType.waze,
-        maneuverType: ManeuverType.right,
-        distanceMeters: 250,
-        rawText: 'Gira a la derecha en 250 m por Calle 100',
-        destinationStreet: 'Calle 100',
-        receivedAt: DateTime(2026, 10, 22, 10, 30),
-        status: BridgeInstructionStatus.recognized,
-      );
+    test(
+      'Convierte exitosamente instrucción reconocida de Waze con giro y distancia',
+      () {
+        final instruction = BridgeNavigationInstruction(
+          source: BridgeSourceType.waze,
+          maneuverType: ManeuverType.right,
+          distanceMeters: 250,
+          rawText: 'Gira a la derecha en 250 m por Calle 100',
+          destinationStreet: 'Calle 100',
+          receivedAt: DateTime(2026, 10, 22, 10, 30),
+          status: BridgeInstructionStatus.recognized,
+        );
 
-      final result = adapter.adaptBridgeInstruction(instruction);
+        final result = adapter.adaptBridgeInstruction(instruction);
 
-      expect(result.isSupported, isTrue);
-      expect(result.packet, isNotNull);
-      expect(result.packet!.length, 20);
-      expect(result.tripperManeuverCode, TripperProtocol.maneuverTurnRight);
-      expect(result.encodedDistanceMeters, 250);
-      expect(result.packet![0], 0x10);
-      expect(result.packet![1], 0x11);
-      expect(result.packet![2], 0x15); // Turn right
-    });
+        expect(result.isSupported, isTrue);
+        expect(result.packet, isNotNull);
+        expect(result.packet!.length, 20);
+        expect(result.tripperManeuverCode, TripperProtocol.maneuverTurnRight);
+        expect(result.encodedDistanceMeters, 250);
+        expect(result.packet![0], 0x10);
+        expect(result.packet![1], 0x11);
+        expect(result.packet![2], 0x15); // Turn right
+      },
+    );
 
     test('Rechaza instrucción de Waze que carece de distancia válida', () {
       final instruction = BridgeNavigationInstruction(

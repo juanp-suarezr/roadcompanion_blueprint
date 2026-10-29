@@ -349,7 +349,8 @@ class GpxRouteTracker extends ChangeNotifier {
           lastKnownSegmentIndex: safeSegmentIndex,
           maxSegmentLookahead: 45,
         );
-        if (recoveryCandidate.distanceToRouteMeters <= offRouteThresholdMeters) {
+        if (recoveryCandidate.distanceToRouteMeters <=
+            offRouteThresholdMeters) {
           progress = recoveryCandidate;
         }
       }
@@ -357,14 +358,27 @@ class GpxRouteTracker extends ChangeNotifier {
       _currentProgress = progress;
       _offRouteDistanceMeters = progress.distanceToRouteMeters;
 
-      // 4. Lógica de detección de desvío y auto-recuperación
-      if (progress.distanceToRouteMeters > offRouteThresholdMeters) {
+      // 4. Lógica de detección de desvío y auto-recuperación con histéresis
+      // y tolerancia adicional ante ruido GPS (accuracy > 20 m).
+      final accuracyMargin = pos.accuracyMeters > 20.0
+          ? (pos.accuracyMeters - 20.0).clamp(0.0, 25.0)
+          : 0.0;
+      final effectiveOffRouteThreshold =
+          offRouteThresholdMeters + accuracyMargin;
+      final recoveryThreshold = offRouteThresholdMeters * 0.75;
+
+      if (progress.distanceToRouteMeters > effectiveOffRouteThreshold) {
         _consecutiveOffRouteSamples++;
         if (_consecutiveOffRouteSamples >= offRouteFilterSamples) {
           _status = GpxTrackingStatus.offRoute;
           _statusMessage =
               'Desvío de ruta detectado (+${progress.distanceToRouteMeters.toStringAsFixed(0)} m fuera del trazado).';
         }
+      } else if (_status == GpxTrackingStatus.offRoute &&
+          progress.distanceToRouteMeters > recoveryThreshold) {
+        // Banda de histéresis: permanece en offRoute hasta reingresar claramente al corredor (< 75% del umbral)
+        _statusMessage =
+            'Reincorporándose al trazado (+${progress.distanceToRouteMeters.toStringAsFixed(0)} m)...';
       } else {
         _consecutiveOffRouteSamples = 0;
         _status = GpxTrackingStatus.tracking;

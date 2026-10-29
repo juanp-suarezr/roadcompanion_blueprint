@@ -242,7 +242,8 @@ class RoadCurvatureInfo {
   );
 
   /// Alias de compatibilidad para geometría indeterminada o insuficiente.
-  static final RoadCurvatureInfo undetermined = RoadCurvatureInfo.insufficient();
+  static final RoadCurvatureInfo undetermined =
+      RoadCurvatureInfo.insufficient();
 
   /// Instancia explícita cuando no existe geometría vial verificada
   /// (por ejemplo, cuando se navega con Waze o Google Maps mediante notificaciones,

@@ -477,5 +477,71 @@ void main() {
         expect(results[2].subtitle, contains('Santander'));
       },
     );
+
+    test(
+      '13. Gestiona timeout de red, error HTTP 429 (rate-limit), respuesta vacía y fallback de dirección colombiana',
+      () async {
+        // Caso A: Timeout lanza SocketException descriptivo
+        final timeoutService = NominatimGeocodingService(
+          requestTimeout: const Duration(milliseconds: 50),
+          client: MockClient((_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 200));
+            return http.Response('[]', 200);
+          }),
+        );
+        await expectLater(
+          timeoutService.search('Pereira'),
+          throwsA(isA<Exception>()),
+        );
+
+        // Caso B: HTTP 429 lanza HttpException indicando límite de solicitudes
+        final rateLimitService = NominatimGeocodingService(
+          client: MockClient(
+            (_) async => http.Response('Too Many Requests', 429),
+          ),
+        );
+        await expectLater(
+          rateLimitService.search('Manizales'),
+          throwsA(predicate<Object>((e) => e.toString().contains('429'))),
+        );
+
+        // Caso C: Consulta con abreviatura colombiana ("Cra 23 # 45-12, Manizales")
+        // reintenta con consulta normalizada ("Carrera 23, Manizales") cuando la primera devuelve []
+        final capturedQueries = <String>[];
+        final fallbackClient = MockClient((request) async {
+          final q = request.url.queryParameters['q'] ?? '';
+          capturedQueries.add(q);
+          if (q.contains('#')) {
+            return http.Response('[]', 200);
+          }
+          return http.Response(
+            jsonEncode([
+              {
+                'place_id': 301,
+                'name': 'Carrera 23',
+                'display_name':
+                    'Carrera 23, El Cable, Manizales, Caldas, Colombia',
+                'lat': '5.0620',
+                'lon': '-75.4950',
+                'type': 'residential',
+              },
+            ]),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+        final fallbackService = NominatimGeocodingService(
+          client: fallbackClient,
+        );
+        final fallbackResults = await fallbackService.search(
+          'Cra 23 # 45-12, Manizales',
+        );
+        expect(capturedQueries.length, equals(2));
+        expect(capturedQueries.first, equals('Cra 23 # 45-12, Manizales'));
+        expect(capturedQueries.last, equals('Carrera 23, Manizales'));
+        expect(fallbackResults.length, equals(1));
+        expect(fallbackResults.first.title, equals('Carrera 23'));
+      },
+    );
   });
 }

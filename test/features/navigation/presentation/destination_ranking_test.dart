@@ -283,6 +283,13 @@ void main() {
         expect(isCategoryQuery('Manizales'), isFalse);
         expect(isCategoryQuery('Bogotá'), isFalse);
 
+        // Lugares con nombre propio que incluyen una palabra de categoría NO deben degradarse a búsqueda genérica
+        expect(isCategoryQuery('Parque del Café'), isFalse);
+        expect(isCategoryQuery('Hotel Movich Pereira'), isFalse);
+        expect(isCategoryQuery('Hospital San Jorge'), isFalse);
+        expect(isCategoryQuery('Centro Comercial Fundadores'), isFalse);
+        expect(isCategoryQuery('Taller Yamaha Manizales'), isFalse);
+
         // Resolución de llave semántica de categoría
         expect(resolveCategoryKey('gasolina'), equals('fuel'));
         expect(resolveCategoryKey('gasolinas'), equals('fuel'));

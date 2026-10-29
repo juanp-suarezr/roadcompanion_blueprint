@@ -13,7 +13,10 @@ enum DiagnosticPipelineStage {
   l2ParsedEvent('L2:PARSED_EVENT', '2. Evento interpretado por RoadCompanion'),
 
   /// 3. Instrucción convertida al modelo interno de maniobra / curvatura.
-  l3InternalModel('L3:INTERNAL_MODEL', '3. Instrucción convertida al modelo interno'),
+  l3InternalModel(
+    'L3:INTERNAL_MODEL',
+    '3. Instrucción convertida al modelo interno',
+  ),
 
   /// 4. Trama de 20 bytes escrita efectivamente al transporte BLE (RE_DISP).
   l4BleTx('L4:BLE_TX', '4. Paquete escrito a BLE'),

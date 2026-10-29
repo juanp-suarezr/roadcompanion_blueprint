@@ -129,7 +129,9 @@ class RoadCurvatureEstimator {
       final dist = cleanedPoints.last.distanceTo(candidate);
       if (dist >= minSegmentLengthMeters) {
         cleanedPoints.add(candidate);
-      } else if (i == geometry.length - 1 && cleanedPoints.length >= 2 && dist > 0.05) {
+      } else if (i == geometry.length - 1 &&
+          cleanedPoints.length >= 2 &&
+          dist > 0.05) {
         // Reemplazar el penúltimo si el último tramo es un micro-segmento terminal
         cleanedPoints[cleanedPoints.length - 1] = candidate;
       }
@@ -216,8 +218,9 @@ class RoadCurvatureEstimator {
         final chordBearing = chordStart.bearingTo(chordEnd);
         final entryBearing = segments[currentSegIndex].bearingDegrees;
         final exitBearing = segments[lastSegInLookahead].bearingDegrees;
-        final netHeadingChange =
-            normalizeAngleDelta(exitBearing - entryBearing).abs();
+        final netHeadingChange = normalizeAngleDelta(
+          exitBearing - entryBearing,
+        ).abs();
 
         double maxCrossTrackMeters = 0.0;
         for (int k = 1; k < windowVertices.length - 1; k++) {
@@ -323,8 +326,7 @@ class RoadCurvatureEstimator {
         if (currentArcStart == null) {
           currentArcStart = segA.startDistanceMeters;
           currentArcEnd = segB.endDistanceMeters;
-          currentArcLength =
-              0.5 * segA.lengthMeters + 0.5 * segB.lengthMeters;
+          currentArcLength = 0.5 * segA.lengthMeters + 0.5 * segB.lengthMeters;
           currentArcAngle = delta;
           currentArcVertices = 1;
         } else if (sameSign &&
@@ -337,8 +339,7 @@ class RoadCurvatureEstimator {
           flushCurrentArc();
           currentArcStart = segA.startDistanceMeters;
           currentArcEnd = segB.endDistanceMeters;
-          currentArcLength =
-              0.5 * segA.lengthMeters + 0.5 * segB.lengthMeters;
+          currentArcLength = 0.5 * segA.lengthMeters + 0.5 * segB.lengthMeters;
           currentArcAngle = delta;
           currentArcVertices = 1;
         }
@@ -420,8 +421,11 @@ class RoadCurvatureEstimator {
     );
 
     // 6. Clasificar tramo sinuoso vs curvas consecutivas vs curva individual
-    if (arcs.length >= 3 && alternatingTransitions >= 2 && totalAbsAngle >= 55.0) {
-      final totalSpan = arcs.last.endDistanceMeters - primaryArc.startDistanceMeters;
+    if (arcs.length >= 3 &&
+        alternatingTransitions >= 2 &&
+        totalAbsAngle >= 55.0) {
+      final totalSpan =
+          arcs.last.endDistanceMeters - primaryArc.startDistanceMeters;
       return RoadCurvatureInfo(
         type: RoadCurvatureType.winding,
         curveDirection: CurveDirection.alternating,
@@ -442,7 +446,8 @@ class RoadCurvatureEstimator {
 
     if (arcs.length == 2 &&
         (arcs[1].startDistanceMeters - primaryArc.endDistanceMeters) <= 80.0) {
-      final totalSpan = arcs[1].endDistanceMeters - primaryArc.startDistanceMeters;
+      final totalSpan =
+          arcs[1].endDistanceMeters - primaryArc.startDistanceMeters;
       return RoadCurvatureInfo(
         type: RoadCurvatureType.consecutiveCurves,
         curveDirection: arcs[0].direction != arcs[1].direction
@@ -492,8 +497,10 @@ class RoadCurvatureEstimator {
     // Determinar si es pronunciada/horquilla o amplia/gradual
     final bool isTightRadius =
         radius == null || radius <= sharpCurveMaxRadiusMeters;
-    final bool isHairpin = absAngle >= 120.0 && (radius == null || radius <= 45.0);
-    final bool isSharp = absAngle >= sharpCurveThresholdDegrees && isTightRadius;
+    final bool isHairpin =
+        absAngle >= 120.0 && (radius == null || radius <= 45.0);
+    final bool isSharp =
+        absAngle >= sharpCurveThresholdDegrees && isTightRadius;
 
     final CurveClass curveClass = isHairpin
         ? CurveClass.hairpin

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../app/state/app_settings_state.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/storm_badge.dart';
 import '../../../../domain/entities/coordinates.dart';
@@ -23,6 +24,7 @@ import '../domain/services/routing_service.dart';
 import '../domain/services/smart_navigation_memory_service.dart';
 import '../domain/services/voice_navigation_service.dart';
 import '../domain/services/navigation_maneuver_engine.dart';
+import '../domain/services/navigation_source.dart';
 import '../infrastructure/services/geolocator_location_service.dart';
 import '../infrastructure/services/nominatim_geocoding_service.dart';
 import '../infrastructure/services/osrm_routing_service.dart';
@@ -88,6 +90,7 @@ class NavigationScreen extends StatefulWidget {
   final NavigationManeuverEngine? maneuverEngine;
   final NavigationSimulatorService? simulatorService;
   final NavigationScreenMode? initialMode;
+  final Duration routeRequestTimeout;
 
   const NavigationScreen({
     super.key,
@@ -103,13 +106,14 @@ class NavigationScreen extends StatefulWidget {
     this.maneuverEngine,
     this.simulatorService,
     this.initialMode,
+    this.routeRequestTimeout = const Duration(seconds: 12),
   });
 
   @override
-  State<NavigationScreen> createState() => _NavigationScreenState();
+  State<NavigationScreen> createState() => NavigationScreenState();
 }
 
-class _NavigationScreenState extends State<NavigationScreen> {
+class NavigationScreenState extends State<NavigationScreen> {
   late final DemoNavigationController _demoController;
   late final MapController _mapController;
 
@@ -147,13 +151,34 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   // Control de versión de ruta, curvatura vial, recálculo y cadencia BLE
   int _activeRouteVersion = 1;
+  int _routeCalcRequestSeq = 0;
+  int _recalculationRequestSeq = 0;
   RoadCurvatureInfo? _currentCurvatureInfo;
   bool _isRecalculatingRoute = false;
+  String? _recalculationErrorMessage;
   DateTime? _lastRecalculationAttempt;
   bool _followRiderOnMap = true;
   int? _lastBleStepIndex;
   int? _lastBleDistanceMeters;
   DateTime? _lastBleSentAt;
+
+  @visibleForTesting
+  CalculatedRoute? get calculatedRoute => _calculatedRoute;
+
+  @visibleForTesting
+  bool get isRecalculatingRoute => _isRecalculatingRoute;
+
+  @visibleForTesting
+  String? get recalculationErrorMessage => _recalculationErrorMessage;
+
+  @visibleForTesting
+  int get activeRouteVersion => _activeRouteVersion;
+
+  @visibleForTesting
+  RoadCurvatureInfo? get currentCurvatureInfo => _currentCurvatureInfo;
+
+  @visibleForTesting
+  NavigationManeuverEngine get maneuverEngine => _maneuverEngine;
 
   @override
   void initState() {
@@ -273,14 +298,20 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   Future<void> _selectDestinationAndRoute(Destination destination) async {
+    final requestSeq = ++_routeCalcRequestSeq;
+    _recalculationRequestSeq++; // Cancela cualquier recálculo en vuelo anterior
+
     setState(() {
       _selectedDestination = destination;
       _isCalculatingRoute = true;
+      _isRecalculatingRoute = false;
       _routeErrorMessage = null;
+      _recalculationErrorMessage = null;
       _calculatedRoute = null;
       _availableRoutes = const [];
       _selectedRouteIndex = 0;
       _isNavigatingCalculatedRoute = false;
+      _currentCurvatureInfo = null;
     });
 
     // Intentar obtener una posición fresca del sensor GPS si aún no se tiene fijada
@@ -289,13 +320,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
         final pos = await _locationService.getCurrentPosition(
           timeLimit: const Duration(seconds: 3),
         );
-        if (pos != null && mounted) {
+        if (pos != null && mounted && requestSeq == _routeCalcRequestSeq) {
           _currentRiderCoordinates = pos.coordinates;
           _riderHeading = pos.headingDegrees;
           _accuracyMeters = pos.accuracyMeters;
         }
       } catch (_) {}
     }
+
+    if (!mounted || requestSeq != _routeCalcRequestSeq) return;
 
     // Origen: ubicación actual del usuario o fallback de respaldo en caso de entorno sin GPS
     final Coordinates origin =
@@ -307,12 +340,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
 
     try {
-      final routes = await _routingService.calculateRoutesWithAlternatives(
-        origin: origin,
-        destination: destination.coordinates,
-      );
+      final routes = await _routingService
+          .calculateRoutesWithAlternatives(
+            origin: origin,
+            destination: destination.coordinates,
+          )
+          .timeout(widget.routeRequestTimeout);
 
-      if (!mounted) return;
+      if (!mounted || requestSeq != _routeCalcRequestSeq) return;
       if (routes.isEmpty) {
         setState(() {
           _isCalculatingRoute = false;
@@ -327,11 +362,24 @@ class _NavigationScreenState extends State<NavigationScreen> {
           .map((r) => r.copyWith(routeVersion: _activeRouteVersion))
           .toList();
 
+      // Invalidar maniobras previas al aceptar la nueva ruta calculada
+      _maneuverEngine.clear();
+      _maneuverEngine.setRoute(versionedRoutes.first);
+      _lastBleStepIndex = null;
+      _lastBleDistanceMeters = null;
+
       setState(() {
         _availableRoutes = versionedRoutes;
         _selectedRouteIndex = 0;
         _calculatedRoute = versionedRoutes.first;
-        _currentCurvatureInfo = null;
+        _currentCurvatureInfo = RoadCurvatureEstimator.estimate(
+          geometry: versionedRoutes.first.geometry,
+          traveledDistanceMeters: 0.0,
+          lookaheadMeters: 120.0,
+          maneuvers: versionedRoutes.first.routePlan.maneuvers,
+          geometrySource: GeometrySource.internalRouteOsrm,
+          routeVersion: _activeRouteVersion,
+        );
         _isCalculatingRoute = false;
         _currentMode = NavigationScreenMode.realMap;
       });
@@ -342,7 +390,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         allCoords.isNotEmpty ? allCoords : routes.first.geometry,
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestSeq != _routeCalcRequestSeq) return;
       setState(() {
         _isCalculatingRoute = false;
         _routeErrorMessage =
@@ -353,12 +401,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   void _selectRouteAlternative(int index) {
     if (index < 0 || index >= _availableRoutes.length) return;
+    _activeRouteVersion++;
+    final updatedAlternative = _availableRoutes[index].copyWith(
+      routeVersion: _activeRouteVersion,
+    );
     setState(() {
       _selectedRouteIndex = index;
-      _calculatedRoute = _availableRoutes[index];
+      _calculatedRoute = updatedAlternative;
+      _currentCurvatureInfo = null;
     });
     // Ajustar encuadre al cambiar de ruta seleccionada
-    _fitMapToCoordinates(_availableRoutes[index].geometry);
+    _fitMapToCoordinates(updatedAlternative.geometry);
   }
 
   Future<void> _openFavoriteRoutes() async {
@@ -508,7 +561,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
           final currentZoom = _mapController.camera.zoom;
           _mapController.move(
             LatLng(pos.coordinates.latitude, pos.coordinates.longitude),
-            currentZoom < 14.0 ? 15.5 : currentZoom,
+            currentZoom,
           );
         } catch (_) {}
       }
@@ -521,13 +574,22 @@ class _NavigationScreenState extends State<NavigationScreen> {
           currentSpeedKmh: pos.speedKmh ?? 0.0,
         );
 
-        // Puente reactivo hacia el display del Tripper Pod con control de cadencia
-        // y sin enviar instrucciones ficticias cuando el tipo es unknown.
-        if (_tripperBleService.currentState.isReadyForNavigation) {
+        // Puente reactivo hacia el display del Tripper Pod con control de cadencia,
+        // aislamiento de fuente seleccionada y sin enviar instrucciones ficticias cuando el tipo es unknown.
+        final selectedSource =
+            AppSettingsScope.maybeOf(context)?.selectedNavigationSource ??
+            SelectedNavigationSourceType.internal;
+        if (selectedSource == SelectedNavigationSourceType.internal &&
+            _tripperBleService.currentState.isReadyForNavigation) {
           final opcode = TripperProtocol.mapManeuverToTripperCode(
             step.activeManeuver.type,
           );
-          if (opcode != null) {
+          if (opcode == null) {
+            _tripperBleService.clearActiveNavPacket(
+              reason:
+                  'Maniobra interna desconocida (${step.activeManeuver.type.name})',
+            );
+          } else {
             final now = DateTime.now();
             final distRounded = step.distanceToManeuverMeters.round();
             final stepChanged = _lastBleStepIndex != step.maneuverIndex;
@@ -559,7 +621,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     if (_activeTracker!.status == GpxTrackingStatus.offRoute) {
       _voiceService.announceOffRoute();
       if (pos != null) {
-        _triggerOffRouteRecalculation(pos.coordinates);
+        triggerOffRouteRecalculation(pos.coordinates);
       }
     } else if (_activeTracker!.status == GpxTrackingStatus.completed) {
       _voiceService.announceDestinationReached();
@@ -567,40 +629,69 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
-  Future<void> _triggerOffRouteRecalculation(Coordinates currentOrigin) async {
-    if (_isRecalculatingRoute || _selectedDestination == null) return;
+  @visibleForTesting
+  Future<void> triggerOffRouteRecalculation(
+    Coordinates currentOrigin, {
+    bool force = false,
+  }) async {
+    if (_selectedDestination == null) return;
+    if (!force && _isRecalculatingRoute) return;
+
     final now = DateTime.now();
-    if (_lastRecalculationAttempt != null &&
+    if (!force &&
+        _lastRecalculationAttempt != null &&
         now.difference(_lastRecalculationAttempt!) <
             const Duration(seconds: 15)) {
       return;
     }
 
     _lastRecalculationAttempt = now;
+    final requestSeq = ++_recalculationRequestSeq;
+    final previousCurvature = _currentCurvatureInfo;
+
     if (mounted) {
       setState(() {
         _isRecalculatingRoute = true;
+        _recalculationErrorMessage = null;
         _currentCurvatureInfo = _currentCurvatureInfo?.markStale();
       });
     }
 
     try {
-      final recalculated = await _routingService.calculateRoute(
-        origin: currentOrigin,
-        destination: _selectedDestination!.coordinates,
-      );
-      if (!mounted || !_isNavigatingCalculatedRoute) return;
+      final recalculated = await _routingService
+          .calculateRoute(
+            origin: currentOrigin,
+            destination: _selectedDestination!.coordinates,
+          )
+          .timeout(widget.routeRequestTimeout);
+
+      // Si llegó una solicitud más reciente o se canceló la navegación, descartar esta respuesta obsoleta
+      if (!mounted ||
+          !_isNavigatingCalculatedRoute ||
+          requestSeq != _recalculationRequestSeq) {
+        return;
+      }
 
       _activeRouteVersion++;
       final versionedRoute = recalculated.copyWith(
         routeVersion: _activeRouteVersion,
       );
 
-      // Invalidar estado anterior sin mezclar maniobras de la ruta previa
+      // Invalidar estado anterior sin mezclar maniobras ni geometría de la ruta previa
       _lastBleStepIndex = null;
       _lastBleDistanceMeters = null;
+      _maneuverEngine.clear();
       _maneuverEngine.setRoute(versionedRoute);
       _voiceService.resetGuidance();
+
+      final refreshedCurvature = RoadCurvatureEstimator.estimate(
+        geometry: versionedRoute.geometry,
+        traveledDistanceMeters: 0.0,
+        lookaheadMeters: 120.0,
+        maneuvers: versionedRoute.routePlan.maneuvers,
+        geometrySource: GeometrySource.internalRouteOsrm,
+        routeVersion: _activeRouteVersion,
+      );
 
       final gpxCompatible = ImportedGpxRoute.fromCalculatedRoute(
         versionedRoute,
@@ -609,6 +700,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
       oldTracker?.removeListener(_onActiveTrackerProgress);
       await oldTracker?.stopTracking();
       oldTracker?.dispose();
+
+      // Re-verificar que no haya sido invalidado durante el await de stopTracking
+      if (!mounted ||
+          !_isNavigatingCalculatedRoute ||
+          requestSeq != _recalculationRequestSeq) {
+        return;
+      }
 
       _activeTracker = GpxRouteTracker(
         route: gpxCompatible,
@@ -620,16 +718,30 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _activeTracker!.addListener(_onActiveTrackerProgress);
       await _activeTracker!.startTracking();
 
-      if (mounted) {
+      if (mounted && requestSeq == _recalculationRequestSeq) {
         setState(() {
           _calculatedRoute = versionedRoute;
           _availableRoutes = [versionedRoute];
           _selectedRouteIndex = 0;
+          _currentCurvatureInfo = refreshedCurvature;
+          _recalculationErrorMessage = null;
           _isRecalculatingRoute = false;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && requestSeq == _recalculationRequestSeq) {
+        setState(() {
+          _isRecalculatingRoute = false;
+          // Conservar la ruta vigente y restaurar curvatura previa si el recálculo falla
+          _currentCurvatureInfo = previousCurvature;
+          _recalculationErrorMessage =
+              'No se pudo recalcular la ruta. Conservando ruta activa.';
+        });
+      }
+    } finally {
+      if (mounted &&
+          requestSeq == _recalculationRequestSeq &&
+          _isRecalculatingRoute) {
         setState(() {
           _isRecalculatingRoute = false;
         });
@@ -695,8 +807,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _voiceService.stop();
     _voiceService.resetGuidance();
     _maneuverEngine.clear();
+    _tripperBleService.clearActiveNavPacket(
+      reason: 'Ruta interna cancelada por el usuario',
+    );
     _tripperBleService.stopNavigation();
     _activeTracker?.stopTracking();
+    _lastBleStepIndex = null;
+    _lastBleDistanceMeters = null;
+    _lastBleSentAt = null;
     _startListeningGps();
     setState(() {
       _selectedDestination = null;
@@ -704,6 +822,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _availableRoutes = const [];
       _selectedRouteIndex = 0;
       _isNavigatingCalculatedRoute = false;
+      _isRecalculatingRoute = false;
+      _currentCurvatureInfo = null;
       _routeErrorMessage = null;
     });
   }
@@ -759,7 +879,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await _voiceService.stop();
     _voiceService.resetGuidance();
     _maneuverEngine.clear();
+    _tripperBleService.clearActiveNavPacket(
+      reason: 'Sesión de navegación interna detenida',
+    );
     await _tripperBleService.stopNavigation();
+    _lastBleStepIndex = null;
+    _lastBleDistanceMeters = null;
+    _lastBleSentAt = null;
     _startListeningGps();
     if (!mounted) return;
 
@@ -768,18 +894,24 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
     setState(() {
       _isNavigatingCalculatedRoute = false;
+      _isRecalculatingRoute = false;
+      _currentCurvatureInfo = null;
     });
   }
 
   Future<void> _recenterMapOnUser() async {
     _followRiderOnMap = true;
+    double targetZoom = 15.5;
+    try {
+      targetZoom = _mapController.camera.zoom;
+    } catch (_) {}
     if (_currentRiderCoordinates != null) {
       _mapController.move(
         LatLng(
           _currentRiderCoordinates!.latitude,
           _currentRiderCoordinates!.longitude,
         ),
-        15.5,
+        targetZoom,
       );
       return;
     }
@@ -804,7 +936,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         });
         _mapController.move(
           LatLng(pos.coordinates.latitude, pos.coordinates.longitude),
-          15.5,
+          targetZoom,
         );
       }
     } catch (_) {}
@@ -1154,6 +1286,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
             child: _buildErrorBanner(_routeErrorMessage!),
           ),
 
+        // 4b. Aviso no bloqueante cuando falla un recálculo pero se conserva la ruta activa
+        if (_isNavigatingCalculatedRoute && _recalculationErrorMessage != null)
+          Positioned(
+            top: 14.0,
+            left: 16.0,
+            right: 16.0,
+            child: _buildRecalculationWarningBanner(
+              _recalculationErrorMessage!,
+            ),
+          ),
+
         // Banner de error si la importación GPX falla
         if (routeState.errorMessage != null)
           Positioned(
@@ -1413,6 +1556,61 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
   }
 
+  Widget _buildRecalculationWarningBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF33240B),
+        borderRadius: BorderRadius.circular(10.0),
+        border: Border.all(color: AppColors.warning),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: AppColors.warning,
+            size: 18.0,
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12.0,
+                fontWeight: FontWeight.w600,
+                color: AppColors.coldWhite,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final origin =
+                  _currentRiderCoordinates ??
+                  _activeTracker?.currentPosition?.coordinates;
+              if (origin != null) {
+                triggerOffRouteRecalculation(origin, force: true);
+              }
+            },
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: AppColors.cyanLuminous,
+            ),
+            child: const Text('Reintentar'),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.close,
+              size: 16.0,
+              color: AppColors.coldWhite,
+            ),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(() => _recalculationErrorMessage = null),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGpxContent(bool isDark, ImportedRouteState routeState) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
@@ -1589,44 +1787,36 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   _simulatorService.isPaused ||
                   _simulatorService.isCompleted;
 
-              final maneuver =
-                  isSimulatorActive
-                      ? _simulatorService.currentStep.maneuver
-                      : _demoController.currentManeuver;
-              final distanceToManeuver =
-                  isSimulatorActive
-                      ? _simulatorService.currentVirtualDistanceMeters
-                      : _demoController.distanceToManeuverMeters;
-              final geometry =
-                  isSimulatorActive
-                      ? _simulatorService.geometry
-                      : _demoController.geometry;
-              final progressFraction =
-                  isSimulatorActive
-                      ? (_simulatorService.progressPercentage / 100.0).clamp(
-                        0.0,
-                        1.0,
-                      )
-                      : _demoController.stepFraction;
-              final totalDistance =
-                  isSimulatorActive
-                      ? _simulatorService.totalRouteDistanceMeters
-                      : _demoController.routePlan.totalDistanceMeters;
-              final progress =
-                  isSimulatorActive
-                      ? RouteProgress(
-                        distanceTraveledMeters:
-                            _simulatorService.traveledDistanceMeters,
-                        remainingDistanceMeters:
-                            _simulatorService.totalRemainingDistanceMeters,
-                        progressPercentage:
-                            _simulatorService.progressPercentage,
-                        projectedPoint:
-                            _simulatorService.currentVirtualPosition,
-                        distanceToRouteMeters: 0.0,
-                        closestSegmentIndex: 0,
-                      )
-                      : _demoController.currentProgress;
+              final maneuver = isSimulatorActive
+                  ? _simulatorService.currentStep.maneuver
+                  : _demoController.currentManeuver;
+              final distanceToManeuver = isSimulatorActive
+                  ? _simulatorService.currentVirtualDistanceMeters
+                  : _demoController.distanceToManeuverMeters;
+              final geometry = isSimulatorActive
+                  ? _simulatorService.geometry
+                  : _demoController.geometry;
+              final progressFraction = isSimulatorActive
+                  ? (_simulatorService.progressPercentage / 100.0).clamp(
+                      0.0,
+                      1.0,
+                    )
+                  : _demoController.stepFraction;
+              final totalDistance = isSimulatorActive
+                  ? _simulatorService.totalRouteDistanceMeters
+                  : _demoController.routePlan.totalDistanceMeters;
+              final progress = isSimulatorActive
+                  ? RouteProgress(
+                      distanceTraveledMeters:
+                          _simulatorService.traveledDistanceMeters,
+                      remainingDistanceMeters:
+                          _simulatorService.totalRemainingDistanceMeters,
+                      progressPercentage: _simulatorService.progressPercentage,
+                      projectedPoint: _simulatorService.currentVirtualPosition,
+                      distanceToRouteMeters: 0.0,
+                      closestSegmentIndex: 0,
+                    )
+                  : _demoController.currentProgress;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/bridge/infrastructure/services/bridge_native_channel.dart';
 import '../../features/navigation/domain/services/navigation_source.dart';
 import 'app_settings_service.dart';
 
@@ -46,6 +47,9 @@ class AppSettingsState extends ChangeNotifier {
     _selectedNavigationSource = source;
     notifyListeners();
     _service.saveSelectedNavigationSource(source);
+    try {
+      BridgeNativeChannel().setSelectedSourcePackage(source.androidPackageName);
+    } catch (_) {}
   }
 
   /// Actualiza el modo de tema y lo persiste de inmediato.
@@ -99,6 +103,14 @@ class AppSettingsScope extends InheritedNotifier<AppSettingsState> {
       'No se encontró ningún AppSettingsScope en el contexto actual.',
     );
     return scope!.notifier!;
+  }
+
+  /// Obtiene la instancia de [AppSettingsState] más cercana o `null` si no existe en el árbol.
+  static AppSettingsState? maybeOf(BuildContext context) {
+    final element = context
+        .getElementForInheritedWidgetOfExactType<AppSettingsScope>();
+    final scope = element?.widget as AppSettingsScope?;
+    return scope?.notifier;
   }
 
   /// Obtiene la instancia de [AppSettingsState] sin suscribirse a reconstrucciones.

@@ -272,6 +272,132 @@ void main() {
           expect(empty.status, equals(BridgeInstructionStatus.unrecognized));
         },
       );
+
+      test(
+        '«Waze — En ejecución. Toca para abrir.» y «Waze — Running. Tap to open.» NO se convierten en recto ni extraen vía falsa',
+        () {
+          final bannerEs = parser.parse(
+            rawTitle: 'Waze',
+            rawText: 'En ejecución. Toca para abrir.',
+            source: BridgeSourceType.waze,
+            receivedAt: testDate,
+            availableExtras: const ['android.title', 'android.text'],
+            remoteViewsTexts: const [],
+          );
+
+          expect(bannerEs.isAppRunningNotification, isTrue);
+          expect(bannerEs.maneuverType, equals(ManeuverType.unknown));
+          expect(bannerEs.status, equals(BridgeInstructionStatus.unrecognized));
+          expect(bannerEs.destinationStreet, isNull);
+          expect(bannerEs.distanceMeters, isNull);
+          expect(bannerEs.isCompatibleWithTripper, isFalse);
+          expect(bannerEs.discardReason, isNotNull);
+          expect(
+            bannerEs.availableExtras,
+            equals(['android.title', 'android.text']),
+          );
+
+          final bannerEn = parser.parse(
+            rawTitle: 'Waze',
+            rawText: 'Running. Tap to open.',
+            source: BridgeSourceType.waze,
+            receivedAt: testDate,
+          );
+          expect(bannerEn.isAppRunningNotification, isTrue);
+          expect(bannerEn.maneuverType, equals(ManeuverType.unknown));
+          expect(bannerEn.isCompatibleWithTripper, isFalse);
+        },
+      );
+
+      test(
+        'Evidencia real Galaxy A35 (Google Maps): «Starting navigation», «Head north», «Rerouting» y tráfico se descartan; solo «Turn right — 600 m» es maniobra válida',
+        () {
+          final starting = parser.parseGoogleMaps(
+            rawTitle: 'Starting navigation',
+            rawText: '',
+            receivedAt: testDate,
+          );
+          expect(starting.maneuverType, equals(ManeuverType.unknown));
+          expect(starting.isCompatibleWithTripper, isFalse);
+          expect(starting.discardReason, contains('Starting navigation'));
+
+          final headNorth = parser.parseGoogleMaps(
+            rawTitle: 'Head north',
+            rawText: '200 m',
+            receivedAt: testDate,
+          );
+          expect(headNorth.maneuverType, equals(ManeuverType.unknown));
+          expect(headNorth.distanceMeters, isNull);
+          expect(headNorth.isCompatibleWithTripper, isFalse);
+          expect(headNorth.discardReason, contains('Head north'));
+
+          final rerouting = parser.parseGoogleMaps(
+            rawTitle: 'Rerouting',
+            rawText: '',
+            receivedAt: testDate,
+          );
+          expect(rerouting.maneuverType, equals(ManeuverType.unknown));
+          expect(rerouting.isCompatibleWithTripper, isFalse);
+          expect(rerouting.discardReason, contains('Rerouting'));
+
+          final traffic = parser.parseGoogleMaps(
+            rawTitle: 'Google Maps',
+            rawText: 'Heavy traffic ahead — 5 min delay',
+            receivedAt: testDate,
+          );
+          expect(traffic.maneuverType, equals(ManeuverType.unknown));
+          expect(traffic.isCompatibleWithTripper, isFalse);
+
+          final turnRight = parser.parseGoogleMaps(
+            rawTitle: 'Turn right',
+            rawText: '600 m',
+            receivedAt: testDate,
+            availableExtras: const ['android.title', 'android.text'],
+          );
+          expect(turnRight.maneuverType, equals(ManeuverType.right));
+          expect(turnRight.distanceMeters, equals(600));
+          expect(turnRight.status, equals(BridgeInstructionStatus.recognized));
+          expect(turnRight.isCompatibleWithTripper, isTrue);
+          expect(turnRight.discardReason, isNull);
+        },
+      );
+
+      test(
+        'reconoce frases reales de Waze y Google Maps en español latinoamericano',
+        () {
+          final wazeRight = parser.parse(
+            rawTitle: '250 m',
+            rawText: 'Gire a la derecha hacia Av. Paralela',
+            source: BridgeSourceType.waze,
+            receivedAt: testDate,
+          );
+          expect(wazeRight.maneuverType, equals(ManeuverType.right));
+          expect(wazeRight.distanceMeters, equals(250));
+          expect(wazeRight.destinationStreet, equals('Av. Paralela'));
+          expect(wazeRight.isCompatibleWithTripper, isTrue);
+
+          final wazeStraight = parser.parse(
+            rawTitle: '1.5 km',
+            rawText: 'Sigue derecho por Autopista del Café',
+            source: BridgeSourceType.waze,
+            receivedAt: testDate,
+          );
+          expect(wazeStraight.maneuverType, equals(ManeuverType.straight));
+          expect(wazeStraight.distanceMeters, equals(1500));
+          expect(wazeStraight.isCompatibleWithTripper, isTrue);
+
+          final gmapsRoundabout = parser.parse(
+            rawTitle: 'En 180 m, en la glorieta, tome la 2da salida',
+            rawText: 'hacia Carrera 23',
+            source: BridgeSourceType.googleMaps,
+            receivedAt: testDate,
+          );
+          expect(gmapsRoundabout.maneuverType, equals(ManeuverType.roundabout));
+          expect(gmapsRoundabout.roundaboutExit, equals(2));
+          expect(gmapsRoundabout.distanceMeters, equals(180));
+          expect(gmapsRoundabout.isCompatibleWithTripper, isTrue);
+        },
+      );
     });
   });
 }

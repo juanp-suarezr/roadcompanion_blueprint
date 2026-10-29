@@ -110,7 +110,8 @@ class NavigationInstructionBridge {
     // cancelar la instrucción activa en el servicio BLE para no repetir maniobras obsoletas.
     if (instruction.status == BridgeInstructionStatus.stale) {
       _bleService.clearActiveNavPacket(
-        reason: 'Notificación externa eliminada o expirada (${instruction.source.displayName})',
+        reason:
+            'Notificación externa eliminada o expirada (${instruction.source.displayName})',
       );
       if (_bleService.currentState.isReadyForNavigation) {
         await _bleService.stopNavigation();
@@ -164,8 +165,7 @@ class NavigationInstructionBridge {
       NavigationDiagnosticLogger.logPipeline(
         stage: DiagnosticPipelineStage.l4BleTx,
         source: instruction.source.displayName,
-        summary:
-            'txSuccess=$txSuccess | hex=${adaptation.hexString ?? "n/a"}',
+        summary: 'txSuccess=$txSuccess | hex=${adaptation.hexString ?? "n/a"}',
       );
       if (txSuccess) {
         NavigationDiagnosticLogger.logPipeline(
