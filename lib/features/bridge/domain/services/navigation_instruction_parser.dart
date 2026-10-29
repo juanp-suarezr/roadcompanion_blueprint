@@ -112,6 +112,38 @@ class NavigationInstructionParser {
     );
   }
 
+  /// Perfil de parseo específico para notificaciones de Waze (`com.waze`).
+  BridgeNavigationInstruction parseWaze({
+    String? rawTitle,
+    String? rawText,
+    String? rawSubText,
+    DateTime? receivedAt,
+  }) {
+    return parse(
+      rawTitle: rawTitle,
+      rawText: rawText,
+      rawSubText: rawSubText,
+      source: BridgeSourceType.waze,
+      receivedAt: receivedAt,
+    );
+  }
+
+  /// Perfil de parseo específico para notificaciones de Google Maps (`com.google.android.apps.maps`).
+  BridgeNavigationInstruction parseGoogleMaps({
+    String? rawTitle,
+    String? rawText,
+    String? rawSubText,
+    DateTime? receivedAt,
+  }) {
+    return parse(
+      rawTitle: rawTitle,
+      rawText: rawText,
+      rawSubText: rawSubText,
+      source: BridgeSourceType.googleMaps,
+      receivedAt: receivedAt,
+    );
+  }
+
   /// Extrae la distancia en metros a partir de patrones estándar en español e inglés.
   /// No infiere ni inventa distancias si no existe concordancia explícita.
   _DistanceResult? _extractDistance(String title, String body, String sub) {
@@ -184,6 +216,7 @@ class NavigationInstructionParser {
 
     // 1. Llegada / Destino
     if (lower.contains('has llegado') ||
+        lower.contains('llegaste') ||
         lower.contains('llegarás a tu destino') ||
         lower.contains('llegaras a tu destino') ||
         lower.contains('destino alcanzado') ||
@@ -232,8 +265,12 @@ class NavigationInstructionParser {
         lower.contains('leve a la izquierda') ||
         lower.contains('mantente a la izquierda') ||
         lower.contains('manten a la izquierda') ||
+        lower.contains('usa el carril izquierdo') ||
+        lower.contains('sal a la izquierda') ||
+        lower.contains('toma la salida a la izquierda') ||
         lower.contains('slight left') ||
         lower.contains('keep left') ||
+        lower.contains('exit left') ||
         lower.contains('bifurcacion a la izquierda') ||
         lower.contains('bifurcación a la izquierda')) {
       return (ManeuverType.slightLeft, null);
@@ -241,6 +278,7 @@ class NavigationInstructionParser {
 
     if (lower.contains('a la izquierda') ||
         lower.contains('hacia la izquierda') ||
+        lower.contains('dobla a la izquierda') ||
         lower.contains('turn left')) {
       return (ManeuverType.left, null);
     }
@@ -257,8 +295,12 @@ class NavigationInstructionParser {
         lower.contains('leve a la derecha') ||
         lower.contains('mantente a la derecha') ||
         lower.contains('manten a la derecha') ||
+        lower.contains('usa el carril derecho') ||
+        lower.contains('sal a la derecha') ||
+        lower.contains('toma la salida a la derecha') ||
         lower.contains('slight right') ||
         lower.contains('keep right') ||
+        lower.contains('exit right') ||
         lower.contains('bifurcacion a la derecha') ||
         lower.contains('bifurcación a la derecha')) {
       return (ManeuverType.slightRight, null);
@@ -266,6 +308,7 @@ class NavigationInstructionParser {
 
     if (lower.contains('a la derecha') ||
         lower.contains('hacia la derecha') ||
+        lower.contains('dobla a la derecha') ||
         lower.contains('turn right')) {
       return (ManeuverType.right, null);
     }
@@ -286,6 +329,8 @@ class NavigationInstructionParser {
     // 7. Salida / Partida inicial
     if (lower.contains('dirígete hacia') ||
         lower.contains('dirigete hacia') ||
+        lower.contains('dirígete al ') ||
+        lower.contains('dirigete al ') ||
         lower.contains('inicia el viaje') ||
         lower.contains('head north') ||
         lower.contains('head south') ||

@@ -69,6 +69,9 @@ class CalculatedRoute {
   /// Geometría completa de la ruta.
   List<Coordinates> get geometry => routePlan.geometry;
 
+  /// Versión monotónica del cálculo de ruta.
+  int get routeVersion => routePlan.routeVersion;
+
   /// Tiempo estimado formateado (ej. "1 h 24 min" o "42 min").
   String get formattedDuration {
     final hours = estimatedDuration.inHours;
@@ -94,6 +97,7 @@ class CalculatedRoute {
 
   /// Crea una copia de la ruta con atributos de comparación actualizados.
   CalculatedRoute copyWith({
+    RoutePlan? routePlan,
     String? routeName,
     String? summary,
     bool? isFastest,
@@ -104,9 +108,13 @@ class CalculatedRoute {
     Duration? durationDiff,
     List<CalculatedRoute>? alternatives,
     RouteValidationResult? validation,
+    int? routeVersion,
   }) {
+    final resolvedPlan = routePlan ?? this.routePlan;
     return CalculatedRoute(
-      routePlan: routePlan,
+      routePlan: routeVersion != null
+          ? resolvedPlan.copyWith(routeVersion: routeVersion)
+          : resolvedPlan,
       summary: summary ?? this.summary,
       routeName: routeName ?? this.routeName,
       validation: validation ?? this.validation,

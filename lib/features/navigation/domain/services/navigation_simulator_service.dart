@@ -8,154 +8,12 @@ import '../entities/pereira_santa_rosa_route.dart';
 import '../entities/road_curvature.dart';
 import '../entities/simulated_maneuver_step.dart';
 import '../entities/simulation_trace_event.dart';
+import 'road_curvature_estimator.dart';
 import 'routing_service.dart';
 import 'tripper_ble_service.dart';
 import 'tripper_protocol.dart';
 
-/// Estimador analítico de curvatura de calzada a partir de geometría vial y rumbos.
-class RoadCurvatureEstimator {
-  static RoadCurvatureInfo estimate({
-    required List<Coordinates> geometry,
-    required double traveledDistanceMeters,
-    required List<double> cumulativeDistances,
-    double lookaheadMeters = 35.0,
-    Maneuver? upcomingManeuver,
-    double? distanceToManeuverMeters,
-  }) {
-    if (geometry.length < 2 || cumulativeDistances.length != geometry.length) {
-      return RoadCurvatureInfo.undetermined;
-    }
-
-    final totalDist = cumulativeDistances.last;
-    if (traveledDistanceMeters >= totalDist) {
-      return const RoadCurvatureInfo(
-        type: RoadCurvatureType.straight,
-        bearingDeltaDegrees: 0.0,
-        distanceToCurveMeters: 0.0,
-        windowLengthMeters: 0.0,
-      );
-    }
-
-    // Si coincide con maniobra inminente de intersección o rotonda a menos de 35 metros
-    if (upcomingManeuver != null &&
-        distanceToManeuverMeters != null &&
-        distanceToManeuverMeters <= 35.0) {
-      if (upcomingManeuver.type == ManeuverType.roundabout) {
-        return RoadCurvatureInfo(
-          type: RoadCurvatureType.roundabout,
-          bearingDeltaDegrees: 90.0,
-          distanceToCurveMeters: distanceToManeuverMeters,
-          windowLengthMeters: lookaheadMeters,
-        );
-      }
-      if (upcomingManeuver.type == ManeuverType.left ||
-          upcomingManeuver.type == ManeuverType.sharpLeft) {
-        return RoadCurvatureInfo(
-          type: RoadCurvatureType.intersectionTurnLeft,
-          bearingDeltaDegrees: -60.0,
-          distanceToCurveMeters: distanceToManeuverMeters,
-          windowLengthMeters: lookaheadMeters,
-        );
-      }
-      if (upcomingManeuver.type == ManeuverType.right ||
-          upcomingManeuver.type == ManeuverType.sharpRight) {
-        return RoadCurvatureInfo(
-          type: RoadCurvatureType.intersectionTurnRight,
-          bearingDeltaDegrees: 60.0,
-          distanceToCurveMeters: distanceToManeuverMeters,
-          windowLengthMeters: lookaheadMeters,
-        );
-      }
-    }
-
-    // 2. Localizar el segmento actual donde se ubica el vehículo virtual
-    int currentSeg = 0;
-    for (int i = 0; i < cumulativeDistances.length - 1; i++) {
-      if (cumulativeDistances[i + 1] >= traveledDistanceMeters) {
-        currentSeg = i;
-        break;
-      }
-    }
-
-    final currentBearing =
-        geometry[currentSeg].bearingTo(geometry[currentSeg + 1]);
-
-    // 3. Evaluar los vértices y segmentos subsiguientes dentro de la ventana de lookahead (hasta 120 m)
-    final effectiveLookahead = lookaheadMeters < 80.0 ? 80.0 : lookaheadMeters;
-    double maxDelta = 0.0;
-    double distToCurve = 0.0;
-
-    for (int nextSeg = currentSeg + 1; nextSeg < geometry.length - 1; nextSeg++) {
-      final vertexDist = cumulativeDistances[nextSeg];
-      final deltaToVertex = vertexDist - traveledDistanceMeters;
-      if (deltaToVertex > effectiveLookahead) break;
-
-      final nextBearing =
-          geometry[nextSeg].bearingTo(geometry[nextSeg + 1]);
-      final delta = (nextBearing - currentBearing + 540) % 360 - 180;
-
-      if (delta.abs() > maxDelta.abs()) {
-        maxDelta = delta;
-        distToCurve = deltaToVertex > 0 ? deltaToVertex : 0.0;
-      }
-    }
-
-    final absDelta = maxDelta.abs();
-    RoadCurvatureType type;
-    if (absDelta < 10.0) {
-      type = RoadCurvatureType.straight;
-    } else if (absDelta <= 35.0) {
-      type =
-          maxDelta < 0
-              ? RoadCurvatureType.gentleLeft
-              : RoadCurvatureType.gentleRight;
-    } else {
-      type =
-          maxDelta < 0
-              ? RoadCurvatureType.sharpLeft
-              : RoadCurvatureType.sharpRight;
-    }
-
-    return RoadCurvatureInfo(
-      type: type,
-      bearingDeltaDegrees: maxDelta,
-      distanceToCurveMeters:
-          distToCurve > 0 ? distToCurve : (distanceToManeuverMeters ?? 0.0),
-      windowLengthMeters: effectiveLookahead,
-    );
-  }
-
-  static Coordinates _interpolateAtDistance(
-    List<Coordinates> geometry,
-    List<double> cumulativeDistances,
-    double distanceMeters,
-  ) {
-    if (geometry.isEmpty) return Coordinates(4.814278, -75.694247);
-    if (geometry.length == 1 || distanceMeters <= 0.0) return geometry.first;
-    if (distanceMeters >= cumulativeDistances.last) return geometry.last;
-
-    int seg = 0;
-    for (int i = 0; i < cumulativeDistances.length - 1; i++) {
-      if (cumulativeDistances[i + 1] >= distanceMeters) {
-        seg = i;
-        break;
-      }
-    }
-
-    final d0 = cumulativeDistances[seg];
-    final d1 = cumulativeDistances[seg + 1];
-    final segLength = d1 - d0;
-    if (segLength <= 0.0001) return geometry[seg];
-
-    final t = ((distanceMeters - d0) / segLength).clamp(0.0, 1.0);
-    final pA = geometry[seg];
-    final pB = geometry[seg + 1];
-
-    final lat = pA.latitude + t * (pB.latitude - pA.latitude);
-    final lon = pA.longitude + t * (pB.longitude - pA.longitude);
-    return Coordinates(lat, lon);
-  }
-}
+export 'road_curvature_estimator.dart';
 
 /// Estados posibles del ciclo de vida del simulador de navegación.
 enum SimulationStatus {
@@ -898,7 +756,7 @@ class NavigationSimulatorService extends ChangeNotifier {
       final ratio = totalStepsDist > 0 ? (_traveledDistanceMeters / totalStepsDist).clamp(0.0, 1.0) : 0.0;
       final geomDistance = ratio * totalGeom;
 
-      _virtualPosition = RoadCurvatureEstimator._interpolateAtDistance(
+      _virtualPosition = RoadCurvatureEstimator.interpolateAtDistance(
         _geometry,
         _cumulativeDistances,
         geomDistance,
@@ -910,6 +768,7 @@ class NavigationSimulatorService extends ChangeNotifier {
         cumulativeDistances: _cumulativeDistances,
         upcomingManeuver: currentStep.maneuver,
         distanceToManeuverMeters: _currentVirtualDistanceMeters,
+        geometrySource: GeometrySource.canonicalSimulation,
       );
     } else {
       _virtualPosition = _geometry.first;

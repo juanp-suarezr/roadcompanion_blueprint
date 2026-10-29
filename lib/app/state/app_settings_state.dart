@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../features/navigation/domain/services/navigation_source.dart';
 import 'app_settings_service.dart';
 
 /// Notificador de estado global para los ajustes reactivos de Road Companion.
 ///
-/// Notifica cambios inmediatamente a [MaterialApp] para que la selección de tema
-/// y datos de la motocicleta se reflejen en tiempo real sin reiniciar la aplicación.
+/// Notifica cambios inmediatamente a [MaterialApp] para que la selección de tema,
+/// fuente de navegación y datos de la motocicleta se reflejen en tiempo real.
 class AppSettingsState extends ChangeNotifier {
   final AppSettingsService _service;
 
@@ -13,12 +14,14 @@ class AppSettingsState extends ChangeNotifier {
   late String _motorcycleBrand;
   late String _motorcycleModel;
   late String _motorcycleCustomName;
+  late SelectedNavigationSourceType _selectedNavigationSource;
 
   AppSettingsState(this._service) {
     _themeMode = _service.loadThemeMode();
     _motorcycleBrand = _service.loadMotorcycleBrand();
     _motorcycleModel = _service.loadMotorcycleModel();
     _motorcycleCustomName = _service.loadMotorcycleCustomName();
+    _selectedNavigationSource = _service.loadSelectedNavigationSource();
   }
 
   /// Modo de tema actual de la aplicación.
@@ -32,6 +35,18 @@ class AppSettingsState extends ChangeNotifier {
 
   /// Nombre personalizado o apodo de la motocicleta (ej. "StormBlue").
   String get motorcycleCustomName => _motorcycleCustomName;
+
+  /// Fuente de navegación principal seleccionada (Waze, Google Maps o Interna).
+  SelectedNavigationSourceType get selectedNavigationSource =>
+      _selectedNavigationSource;
+
+  /// Actualiza y persiste la fuente de navegación seleccionada.
+  void setSelectedNavigationSource(SelectedNavigationSourceType source) {
+    if (_selectedNavigationSource == source) return;
+    _selectedNavigationSource = source;
+    notifyListeners();
+    _service.saveSelectedNavigationSource(source);
+  }
 
   /// Actualiza el modo de tema y lo persiste de inmediato.
   void setThemeMode(ThemeMode mode) {

@@ -37,6 +37,12 @@ class RoutePlan {
   /// Distancia restante por carretera en metros hacia el destino (opcional).
   final double? remainingDistanceMeters;
 
+  /// Versión monotónica de la ruta para invalidar geometrías o maniobras de rutas anteriores.
+  final int routeVersion;
+
+  /// Marca temporal opcional de cálculo o recálculo de la ruta.
+  final DateTime? calculatedAt;
+
   /// Crea un plan de ruta inmutable con validación estricta de métricas y colecciones protegidas.
   RoutePlan({
     required this.origin,
@@ -46,8 +52,17 @@ class RoutePlan {
     required this.totalDistanceMeters,
     required this.estimatedDuration,
     this.remainingDistanceMeters,
+    this.routeVersion = 1,
+    this.calculatedAt,
   }) : _maneuvers = List.unmodifiable(maneuvers),
        _geometry = List.unmodifiable(geometry) {
+    if (routeVersion < 1) {
+      throw ArgumentError.value(
+        routeVersion,
+        'routeVersion',
+        'La versión de ruta debe ser mayor o igual a 1.',
+      );
+    }
     if (!totalDistanceMeters.isFinite) {
       throw ArgumentError.value(
         totalDistanceMeters,
@@ -160,6 +175,8 @@ class RoutePlan {
       totalDistanceMeters: totalDistanceMeters,
       estimatedDuration: estimatedDuration,
       remainingDistanceMeters: newRemainingMeters,
+      routeVersion: routeVersion,
+      calculatedAt: calculatedAt,
     );
   }
 
@@ -172,6 +189,8 @@ class RoutePlan {
     double? totalDistanceMeters,
     Duration? estimatedDuration,
     Object? remainingDistanceMeters = _sentinel,
+    int? routeVersion,
+    DateTime? calculatedAt,
   }) {
     return RoutePlan(
       origin: origin ?? this.origin,
@@ -183,6 +202,8 @@ class RoutePlan {
       remainingDistanceMeters: identical(remainingDistanceMeters, _sentinel)
           ? this.remainingDistanceMeters
           : remainingDistanceMeters as double?,
+      routeVersion: routeVersion ?? this.routeVersion,
+      calculatedAt: calculatedAt ?? this.calculatedAt,
     );
   }
 
@@ -195,7 +216,8 @@ class RoutePlan {
         destination != other.destination ||
         totalDistanceMeters != other.totalDistanceMeters ||
         estimatedDuration != other.estimatedDuration ||
-        remainingDistanceMeters != other.remainingDistanceMeters) {
+        remainingDistanceMeters != other.remainingDistanceMeters ||
+        routeVersion != other.routeVersion) {
       return false;
     }
 
@@ -221,9 +243,10 @@ class RoutePlan {
     totalDistanceMeters,
     estimatedDuration,
     remainingDistanceMeters,
+    routeVersion,
   );
 
   @override
   String toString() =>
-      'RoutePlan(origin: $origin, dest: $destination, roadDist: $totalDistanceMeters m, remaining: $remainingDistanceMeters m, maneuvers: ${_maneuvers.length})';
+      'RoutePlan(v$routeVersion, origin: $origin, dest: $destination, roadDist: $totalDistanceMeters m, remaining: $remainingDistanceMeters m, maneuvers: ${_maneuvers.length})';
 }

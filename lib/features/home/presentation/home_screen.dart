@@ -11,6 +11,7 @@ import '../../placeholder/presentation/coming_soon_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../itinerary/presentation/screens/quick_navigation_screen.dart';
 import '../../itinerary/presentation/screens/trip_planner_screen.dart';
+import '../../bridge/presentation/screens/bridge_diagnostic_screen.dart';
 import 'widgets/external_display_banner.dart';
 import 'widgets/ready_to_ride_card.dart';
 
@@ -156,6 +157,16 @@ class HomeScreen extends StatelessWidget {
                     title: 'Ajustes',
                     subtitle: 'Apariencia, tema y preferencias del sistema',
                     onTap: () => _navigateTo(context, const SettingsScreen()),
+                  ),
+                  const SizedBox(height: 10.0),
+
+                  QuickActionCard(
+                    icon: Icons.notifications_active_outlined,
+                    title: 'Modo Compañero (${settings.selectedNavigationSource.displayName})',
+                    subtitle:
+                        'Sincronización de notificaciones externas y estado del puente Tripper',
+                    onTap: () =>
+                        _navigateTo(context, const BridgeDiagnosticScreen()),
                   ),
                   const SizedBox(height: 24.0),
                 ],

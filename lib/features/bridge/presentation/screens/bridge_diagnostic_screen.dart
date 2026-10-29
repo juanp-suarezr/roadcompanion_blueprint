@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
+import '../../../../app/state/app_settings_state.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../domain/entities/maneuver_type.dart';
+import '../../../navigation/domain/services/navigation_source.dart';
 import '../../domain/entities/bridge_instruction_status.dart';
 import '../../domain/entities/bridge_navigation_instruction.dart';
 import '../../domain/entities/bridge_source_type.dart';
 import '../../infrastructure/services/bridge_native_channel.dart';
 import '../state/bridge_diagnostic_controller.dart';
 
-/// Pantalla de diagnóstico técnico para la captura de notificaciones de ESTELA Bridge.
+/// Pantalla de Modo Compañero y diagnóstico técnico para ESTELA Bridge.
 ///
 /// Permite al motociclista verificar en tiempo real:
-/// 1. El estado del permiso del sistema Android (Notification Listener).
-/// 2. La interceptación de eventos de Google Maps y Waze.
-/// 3. La extracción de maniobras, distancias y calles por el parser.
-/// 4. La clasificación rigurosa del estado de la instrucción.
+/// 1. Selección de fuente del viaje (Waze, Google Maps o Interno).
+/// 2. El estado del permiso del sistema Android (Notification Listener) con refresco en `onResume`.
+/// 3. El estado explícito de la máquina de navegación (`CompanionNavigationState`).
+/// 4. La disponibilidad de geometría vial y detección de curvas según la fuente activa.
+/// 5. La extracción de maniobras, distancias y calles por el parser independiente.
 class BridgeDiagnosticScreen extends StatefulWidget {
   final BridgeDiagnosticController? controller;
 
@@ -23,13 +26,15 @@ class BridgeDiagnosticScreen extends StatefulWidget {
   State<BridgeDiagnosticScreen> createState() => _BridgeDiagnosticScreenState();
 }
 
-class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen> {
+class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
+    with WidgetsBindingObserver {
   late final BridgeDiagnosticController _controller;
   bool _isInternalController = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.controller != null) {
       _controller = widget.controller!;
     } else {
@@ -40,7 +45,29 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    try {
+      final scope = context
+          .dependOnInheritedWidgetOfExactType<AppSettingsScope>();
+      final settings = scope?.notifier;
+      if (settings != null &&
+          _controller.selectedSource != settings.selectedNavigationSource) {
+        _controller.selectNavigationSource(settings.selectedNavigationSource);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _controller.onAppResumed();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_isInternalController) {
       _controller.dispose();
     }
@@ -99,11 +126,149 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen> {
               const SizedBox(height: 16),
               _buildLatestInstructionSection(),
               const SizedBox(height: 16),
+              _buildSourceSelectorCard(context),
+              const SizedBox(height: 16),
+              _buildGeometryAndCurvesStatusCard(),
+              const SizedBox(height: 16),
               _buildHistorySection(),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSourceSelectorCard(BuildContext context) {
+    final current = _controller.selectedSource;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceNavy,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardNavy),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.alt_route_rounded,
+                color: AppColors.cyanLuminous,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'FUENTE DE NAVEGACIÓN DEL VIAJE',
+                  style: TextStyle(
+                    color: AppColors.coldWhite,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.cyanLuminous.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _controller.companionState.displayName,
+                  style: const TextStyle(
+                    color: AppColors.cyanLuminous,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: SelectedNavigationSourceType.values.map((source) {
+              final selected = current == source;
+              return ChoiceChip(
+                key: ValueKey('companion_source_${source.name}'),
+                label: Text('Fuente: ${source.displayName}'),
+                selected: selected,
+                selectedColor: AppColors.cyanLuminous,
+                backgroundColor: AppColors.nightBlue,
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.nightBlue : AppColors.coldWhite,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+                onSelected: (_) {
+                  _controller.selectNavigationSource(source);
+                  try {
+                    final scope = context
+                        .dependOnInheritedWidgetOfExactType<AppSettingsScope>();
+                    scope?.notifier?.setSelectedNavigationSource(source);
+                  } catch (_) {}
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGeometryAndCurvesStatusCard() {
+    final caps = _controller.sourceCapabilities;
+    final hasGeom = caps.providesRoadGeometry;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceNavy,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasGeom
+              ? AppColors.success.withValues(alpha: 0.5)
+              : AppColors.warning.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            hasGeom ? Icons.timeline_rounded : Icons.info_outline_rounded,
+            color: hasGeom ? AppColors.success : AppColors.warning,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasGeom
+                      ? 'Geometría vial y curvas: VERIFICADA (OSRM/GPX)'
+                      : 'Geometría vial y curvas: NO EXPUESTA POR NAVEGADOR EXTERNO',
+                  style: TextStyle(
+                    color: hasGeom ? AppColors.success : AppColors.warning,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  caps.limitationDisclosure,
+                  style: const TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -67,6 +67,12 @@ class BridgeNavigationInstruction {
   /// Indica si la instrucción ha sido explícitamente marcada como obsoleta.
   bool get isStale => status == BridgeInstructionStatus.stale;
 
+  /// Indica si la instrucción contiene maniobra y distancia válidas para el Tripper Pod.
+  bool get isCompatibleWithTripper =>
+      isRecognized &&
+      maneuverType != ManeuverType.unknown &&
+      (distanceMeters != null || maneuverType == ManeuverType.arrive);
+
   /// Evalúa si la instrucción ha superado el tiempo máximo de frescura sin actualización.
   bool isExpired({
     Duration maxAge = const Duration(seconds: 45),

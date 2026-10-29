@@ -101,6 +101,39 @@ class BridgeNativeChannel {
     } catch (_) {}
   }
 
+  /// Consulta si el servicio nativo NotificationListenerService está enlazado por Android.
+  Future<bool> isListenerConnected() async {
+    try {
+      final connected = await _controlChannel.invokeMethod<bool>(
+        'isNotificationListenerConnected',
+      );
+      return connected ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Configura el paquete de navegación externo permitido para la sesión actual
+  /// (`"com.waze"`, `"com.google.android.apps.maps"`, `"none"`, o `"all"`).
+  Future<void> setSelectedSourcePackage(String? packageName) async {
+    try {
+      await _controlChannel.invokeMethod<bool>('setSelectedSourcePackage', {
+        'packageName': packageName,
+      });
+    } catch (_) {}
+  }
+
+  /// Obtiene el paquete de navegación actualmente filtrado en la capa nativa.
+  Future<String?> getSelectedSourcePackage() async {
+    try {
+      return await _controlChannel.invokeMethod<String>(
+        'getSelectedSourcePackage',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Flujo continuo de eventos de notificación emitidos por Google Maps o Waze.
   Stream<BridgeNotificationEvent> get notificationStream {
     _cachedStream ??= _eventChannel

@@ -54,6 +54,10 @@ class TripperNavAdaptationResult {
       description: reason,
     );
   }
+
+  /// Representación hexadecimal del paquete adaptado, o `null` si no existe paquete.
+  String? get hexString =>
+      packet != null ? TripperProtocol.toHexString(packet!) : null;
 }
 
 /// Adaptador desacoplado entre las indicaciones de navegación (Waze, Google Maps o navegador propio)

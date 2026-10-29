@@ -21,6 +21,18 @@ class MainActivity : FlutterActivity() {
                     val granted = NavigationNotificationListenerService.isNotificationAccessGranted(this)
                     result.success(granted)
                 }
+                "isNotificationListenerConnected" -> {
+                    result.success(NavigationNotificationListenerService.isListenerConnected)
+                }
+                "setSelectedSourcePackage" -> {
+                    val pkg = call.argument<String>("packageName")
+                    NavigationNotificationListenerService.selectedSourcePackage = pkg
+                    NavigationNotificationListenerService.clearCache()
+                    result.success(true)
+                }
+                "getSelectedSourcePackage" -> {
+                    result.success(NavigationNotificationListenerService.selectedSourcePackage)
+                }
                 "openNotificationAccessSettings" -> {
                     try {
                         val intent = NavigationNotificationListenerService.createSettingsIntent(this)

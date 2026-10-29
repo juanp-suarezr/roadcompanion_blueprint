@@ -77,24 +77,24 @@ class GeolocatorLocationService implements LocationService {
     String? notificationText,
   }) {
     LocationSettings settings;
-    if (!kIsWeb &&
-        defaultTargetPlatform == TargetPlatform.android &&
-        enableBackgroundNotification) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       settings = AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: distanceFilterMeters,
         intervalDuration: Duration(milliseconds: intervalDurationMs),
-        foregroundNotificationConfig: ForegroundNotificationConfig(
-          notificationTitle:
-              notificationTitle ?? 'Navegación activa — REstelar',
-          notificationText:
-              notificationText ?? 'Siguiendo ruta en segundo plano',
-          notificationIcon: const AndroidResource(
-            name: 'ic_launcher',
-            defType: 'mipmap',
-          ),
-          enableWakeLock: true,
-        ),
+        foregroundNotificationConfig: enableBackgroundNotification
+            ? ForegroundNotificationConfig(
+                notificationTitle:
+                    notificationTitle ?? 'Navegación activa — REstelar',
+                notificationText:
+                    notificationText ?? 'Siguiendo ruta en segundo plano',
+                notificationIcon: const AndroidResource(
+                  name: 'ic_launcher',
+                  defType: 'mipmap',
+                ),
+                enableWakeLock: true,
+              )
+            : null,
       );
     } else {
       settings = LocationSettings(

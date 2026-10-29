@@ -29,6 +29,7 @@ class GpxRouteTracker extends ChangeNotifier {
   final int lookaheadSegments;
   final Duration gpsTimeoutDuration;
   final bool isDemoMode;
+  final int routeVersion;
 
   // Estado del seguimiento
   GpxTrackingStatus _status = GpxTrackingStatus.idle;
@@ -80,6 +81,7 @@ class GpxRouteTracker extends ChangeNotifier {
     this.lookaheadSegments = 8,
     this.gpsTimeoutDuration = const Duration(seconds: 12),
     this.isDemoMode = false,
+    this.routeVersion = 1,
   }) : _locationService = locationService ?? const GeolocatorLocationService(),
        _calculator = calculator,
        _sessionRepository = sessionRepository,
@@ -328,13 +330,29 @@ class GpxRouteTracker extends ChangeNotifier {
     );
 
     try {
-      final progress = _calculator.calculate(
+      var progress = _calculator.calculate(
         geometry: geometry,
         currentPosition: pos.coordinates,
         totalDistanceMeters: route.totalGeographicDistanceMeters,
         lastKnownSegmentIndex: safeSegmentIndex,
         maxSegmentLookahead: lookaheadSegments,
       );
+
+      // Si la ventana corta de 8 segmentos sugiere desvío (ej. geometría muy densa o reincorporación
+      // tras salto GPS), verificar ventana extendida hacia adelante antes de declarar offRoute.
+      if (progress.distanceToRouteMeters > offRouteThresholdMeters &&
+          geometry.length > safeSegmentIndex + lookaheadSegments) {
+        final recoveryCandidate = _calculator.calculate(
+          geometry: geometry,
+          currentPosition: pos.coordinates,
+          totalDistanceMeters: route.totalGeographicDistanceMeters,
+          lastKnownSegmentIndex: safeSegmentIndex,
+          maxSegmentLookahead: 45,
+        );
+        if (recoveryCandidate.distanceToRouteMeters <= offRouteThresholdMeters) {
+          progress = recoveryCandidate;
+        }
+      }
 
       _currentProgress = progress;
       _offRouteDistanceMeters = progress.distanceToRouteMeters;

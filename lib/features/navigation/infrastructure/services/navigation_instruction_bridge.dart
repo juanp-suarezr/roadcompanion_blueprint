@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import '../../../../domain/entities/maneuver_type.dart';
+import '../../../bridge/domain/entities/bridge_instruction_status.dart';
 import '../../../bridge/domain/entities/bridge_navigation_instruction.dart';
 import '../../../bridge/infrastructure/services/bridge_navigation_source.dart';
+import '../../domain/services/navigation_diagnostic_logger.dart';
 import '../../domain/services/tripper_ble_service.dart';
 import '../../domain/services/tripper_navigation_adapter.dart';
 
@@ -104,7 +106,28 @@ class NavigationInstructionBridge {
   Future<void> _processIncomingInstruction(
     BridgeNavigationInstruction instruction,
   ) async {
+    // Regla 3 de la máquina de estados: si la notificación se elimina o caduca,
+    // cancelar la instrucción activa en el servicio BLE para no repetir maniobras obsoletas.
+    if (instruction.status == BridgeInstructionStatus.stale) {
+      _bleService.clearActiveNavPacket(
+        reason: 'Notificación externa eliminada o expirada (${instruction.source.displayName})',
+      );
+      if (_bleService.currentState.isReadyForNavigation) {
+        await _bleService.stopNavigation();
+      }
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l3InternalModel,
+        source: instruction.source.displayName,
+        summary: 'Instrucción marcada como STALE -> navegación BLE detenida',
+      );
+    }
+
     final adaptation = _adapter.adaptBridgeInstruction(instruction);
+    NavigationDiagnosticLogger.logPipeline(
+      stage: DiagnosticPipelineStage.l3InternalModel,
+      source: instruction.source.displayName,
+      summary: adaptation.description,
+    );
 
     if (!adaptation.isSupported || adaptation.packet == null) {
       final event = NavigationBridgeEvent(
@@ -114,7 +137,9 @@ class NavigationInstructionBridge {
         timestamp: DateTime.now(),
       );
       _lastEvent = event;
-      _eventsController.add(event);
+      if (!_eventsController.isClosed) {
+        _eventsController.add(event);
+      }
       return;
     }
 
@@ -128,12 +153,28 @@ class NavigationInstructionBridge {
         timestamp: DateTime.now(),
       );
       _lastEvent = event;
-      _eventsController.add(event);
+      if (!_eventsController.isClosed) {
+        _eventsController.add(event);
+      }
       return;
     }
 
     try {
       final txSuccess = await _bleService.sendRawPacket(adaptation.packet!);
+      NavigationDiagnosticLogger.logPipeline(
+        stage: DiagnosticPipelineStage.l4BleTx,
+        source: instruction.source.displayName,
+        summary:
+            'txSuccess=$txSuccess | hex=${adaptation.hexString ?? "n/a"}',
+      );
+      if (txSuccess) {
+        NavigationDiagnosticLogger.logPipeline(
+          stage: DiagnosticPipelineStage.l5PhysicalObservation,
+          source: 'Tripper Pod RE_DISP',
+          summary:
+              'Trama enviada (${adaptation.hexString}): requiere confirmación visual en hardware real',
+        );
+      }
       final event = NavigationBridgeEvent(
         instruction: instruction,
         adaptationResult: adaptation,
@@ -142,7 +183,9 @@ class NavigationInstructionBridge {
         transmissionError: txSuccess ? null : 'Fallo en escritura GATT nativa',
       );
       _lastEvent = event;
-      _eventsController.add(event);
+      if (!_eventsController.isClosed) {
+        _eventsController.add(event);
+      }
     } catch (e) {
       final event = NavigationBridgeEvent(
         instruction: instruction,
@@ -152,7 +195,9 @@ class NavigationInstructionBridge {
         transmissionError: e.toString(),
       );
       _lastEvent = event;
-      _eventsController.add(event);
+      if (!_eventsController.isClosed) {
+        _eventsController.add(event);
+      }
     }
   }
 

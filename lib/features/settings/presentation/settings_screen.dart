@@ -6,10 +6,12 @@ import '../../../app/theme/app_typography.dart';
 import '../../../core/widgets/estela_logo.dart';
 import '../../../core/widgets/storm_badge.dart';
 
+import '../../../features/navigation/domain/services/navigation_source.dart';
 import '../../../features/navigation/domain/services/voice_navigation_service.dart';
 import '../../../features/navigation/infrastructure/services/flutter_blue_plus_tripper_service.dart';
 import '../../../features/navigation/infrastructure/services/flutter_tts_voice_navigation_service.dart';
 import '../../../features/navigation/presentation/screens/tripper_diagnostic_screen.dart';
+import '../../bridge/infrastructure/services/bridge_native_channel.dart';
 import '../../bridge/presentation/screens/bridge_diagnostic_screen.dart';
 
 /// Pantalla de Ajustes de Road Companion.
@@ -287,6 +289,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onPressed: _saveMotorcycleProfile,
                       icon: const Icon(Icons.save_outlined, size: 20.0),
                       label: const Text('Guardar perfil de motocicleta'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24.0),
+
+            // --- SECCIÓN: FUENTE DE NAVEGACIÓN DEL VIAJE ---
+            _buildSectionHeader(
+              'FUENTE DE NAVEGACIÓN',
+              Icons.alt_route_rounded,
+            ),
+            const SizedBox(height: 10.0),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Navegador principal del viaje',
+                      style: AppTypography.sectionTitle.copyWith(
+                        fontSize: 16.0,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    Text(
+                      'Selecciona la fuente de navegación para transmitir maniobras compatibles al Tripper Pod sin mezclar notificaciones de otras apps.',
+                      style: TextStyle(
+                        fontSize: 13.0,
+                        color: isDark
+                            ? AppColors.secondaryTextDark
+                            : AppColors.secondaryTextLight,
+                      ),
+                    ),
+                    const SizedBox(height: 14.0),
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: SelectedNavigationSourceType.values.map((src) {
+                        final isSelected =
+                            settings.selectedNavigationSource == src;
+                        return ChoiceChip(
+                          key: ValueKey('settings_nav_source_${src.name}'),
+                          label: Text(src.displayName),
+                          selected: isSelected,
+                          onSelected: (_) {
+                            settings.setSelectedNavigationSource(src);
+                            BridgeNativeChannel().setSelectedSourcePackage(
+                              src.androidPackageName,
+                            );
+                          },
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),

@@ -4,6 +4,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_typography.dart';
 import '../../../../domain/entities/maneuver.dart';
 import '../../../../domain/entities/maneuver_type.dart';
+import '../../domain/entities/road_curvature.dart';
 import '../state/gpx_route_tracker.dart';
 
 /// HUD superior e inferior superpuesto sobre el mapa cartográfico durante la navegación activa.
@@ -11,6 +12,8 @@ class ActiveTurnByTurnHud extends StatelessWidget {
   final GpxRouteTracker tracker;
   final Maneuver? currentManeuver;
   final double? distanceToManeuverMeters;
+  final RoadCurvatureInfo? currentCurvature;
+  final bool isRecalculatingRoute;
   final bool isVoiceMuted;
   final VoidCallback? onToggleVoiceMute;
   final VoidCallback onPause;
@@ -23,6 +26,8 @@ class ActiveTurnByTurnHud extends StatelessWidget {
     required this.tracker,
     this.currentManeuver,
     this.distanceToManeuverMeters,
+    this.currentCurvature,
+    this.isRecalculatingRoute = false,
     this.isVoiceMuted = false,
     this.onToggleVoiceMute,
     required this.onPause,
@@ -37,13 +42,33 @@ class ActiveTurnByTurnHud extends StatelessWidget {
 
     return Stack(
       children: [
-        // 1. Tarjeta Superior de Maniobra (Turn-by-turn banner)
-        if (currentManeuver != null)
+        // 1. Tarjeta Superior de Maniobra + Alerta de Curvatura Vial (separada de la maniobra)
+        if (currentManeuver != null ||
+            (currentCurvature != null && currentCurvature!.hasActiveCurve) ||
+            isRecalculatingRoute)
           Positioned(
             top: 10.0,
             left: 12.0,
             right: 12.0,
-            child: SafeArea(bottom: false, child: _buildManeuverCard(isDark)),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (currentManeuver != null) _buildManeuverCard(isDark),
+                  if (isRecalculatingRoute) ...[
+                    const SizedBox(height: 6.0),
+                    _buildRecalculatingBanner(),
+                  ],
+                  if (currentCurvature != null &&
+                      currentCurvature!.hasActiveCurve) ...[
+                    const SizedBox(height: 6.0),
+                    _buildCurvatureBanner(currentCurvature!, isDark),
+                  ],
+                ],
+              ),
+            ),
           ),
 
         // 2. Panel Inferior de Telemetría y Controles Flotantes
@@ -147,6 +172,87 @@ class ActiveTurnByTurnHud extends StatelessWidget {
               onPressed: onToggleVoiceMute,
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecalculatingBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 7.0),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 14.0,
+            height: 14.0,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.0,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(width: 8.0),
+          Expanded(
+            child: Text(
+              'Recalculando ruta desde tu posición GPS actual...',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurvatureBanner(RoadCurvatureInfo curvature, bool isDark) {
+    final isSharpOrWinding =
+        curvature.curveClass == CurveClass.sharp ||
+        curvature.curveClass == CurveClass.hairpin ||
+        curvature.curveClass == CurveClass.winding;
+    final accentColor = isSharpOrWinding
+        ? AppColors.warning
+        : AppColors.cyanLuminous;
+    final distStr = curvature.distanceToCurveMeters > 5.0
+        ? 'a ${curvature.distanceToCurveMeters.round()} m'
+        : 'en curso';
+    final radiusStr = curvature.estimatedRadiusMeters != null
+        ? ' • R≈${curvature.estimatedRadiusMeters!.round()} m'
+        : '';
+
+    return Container(
+      key: const ValueKey('hud_road_curvature_banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 7.0),
+      decoration: BoxDecoration(
+        color: (isDark ? AppColors.nightBlue : AppColors.whiteSurface)
+            .withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(10.0),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.65),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(curvature.type.icon, size: 18.0, color: accentColor),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Text(
+              'GEOMETRÍA VIAL: ${curvature.type.label} ($distStr$radiusStr)',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: isDark ? AppColors.coldWhite : AppColors.primaryTextLight,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
