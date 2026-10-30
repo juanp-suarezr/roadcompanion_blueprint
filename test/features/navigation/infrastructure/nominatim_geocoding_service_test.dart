@@ -101,9 +101,9 @@ void main() {
     test(
       '5. Envía parámetro limit configurable (default 10) y viewbox con bounded=0',
       () async {
-        late Uri capturedUri;
+        final capturedUris = <Uri>[];
         final mockClient = MockClient((request) async {
-          capturedUri = request.url;
+          capturedUris.add(request.url);
           return http.Response(
             '[]',
             200,
@@ -118,9 +118,13 @@ void main() {
           limit: 10,
         );
 
-        expect(capturedUri.queryParameters['limit'], equals('10'));
-        expect(capturedUri.queryParameters['bounded'], equals('0'));
-        expect(capturedUri.queryParameters['viewbox'], isNotNull);
+        final nominatimUri = capturedUris.firstWhere(
+          (u) => u.host == 'nominatim.openstreetmap.org',
+        );
+
+        expect(nominatimUri.queryParameters['limit'], equals('10'));
+        expect(nominatimUri.queryParameters['bounded'], equals('0'));
+        expect(nominatimUri.queryParameters['viewbox'], isNotNull);
       },
     );
 

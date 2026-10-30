@@ -1572,7 +1572,7 @@ class NavigationScreenState extends State<NavigationScreen> {
                   child: FilledButton.tonalIcon(
                     onPressed: () => _handleImportGpx(routeState),
                     icon: const Icon(Icons.file_upload_outlined, size: 16.0),
-                    label: const Text('GPX'),
+                    label: const Text('Importar ruta GPX'),
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),
