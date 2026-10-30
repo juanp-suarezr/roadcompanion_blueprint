@@ -11,6 +11,8 @@ export 'domain/entities/route_progress.dart';
 export 'domain/services/route_progress_calculator.dart';
 export 'features/navigation/domain/entities/calculated_route.dart';
 export 'features/navigation/domain/entities/destination.dart';
+export 'features/navigation/domain/entities/saved_favorite_place.dart';
+export 'features/navigation/domain/entities/saved_favorite_route.dart';
 export 'features/navigation/domain/entities/gps_position.dart';
 export 'features/navigation/domain/entities/gpx_point.dart';
 export 'features/navigation/domain/entities/gpx_segment.dart';

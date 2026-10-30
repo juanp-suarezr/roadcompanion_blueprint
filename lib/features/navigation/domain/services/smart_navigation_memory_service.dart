@@ -4,21 +4,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../domain/entities/coordinates.dart';
 import '../entities/access_restriction.dart';
 import '../entities/navigation_issue_report.dart';
+import '../entities/saved_favorite_place.dart';
 import '../entities/saved_favorite_route.dart';
 
 /// Servicio de memoria inteligente local y persistente para REstelar.
 ///
-/// Gestiona rutas favoritas y reportes viales del motociclista (portones cerrados, giros prohibidos,
-/// vías destapadas, baches severos), sincronizándolos automáticamente con el motor de enrutamiento
-/// y el validador de restricciones para influir en los cálculos futuros.
+/// Gestiona rutas favoritas, lugares favoritos puntuales (hogar, vereda, finca, mirador)
+/// y reportes viales del motociclista (portones cerrados, giros prohibidos, vías destapadas, baches severos),
+/// sincronizándolos automáticamente con el motor de enrutamiento y el validador de restricciones.
 class SmartNavigationMemoryService {
   static const String _keyFavorites = 'rc_smart_favorite_routes';
+  static const String _keyFavoritePlaces = 'rc_smart_favorite_places';
   static const String _keyReports = 'rc_smart_navigation_reports';
 
   final SharedPreferences? _prefs;
 
   // Caché en memoria para acceso sincrónico rápido y soporte para pruebas unitarias sin plugins
   final List<SavedFavoriteRoute> _inMemoryFavorites = [];
+  final List<SavedFavoritePlace> _inMemoryFavoritePlaces = [];
   final List<NavigationIssueReport> _inMemoryReports = [];
   bool _isLoaded = false;
   bool get isLoaded => _isLoaded;
@@ -42,6 +45,7 @@ class SmartNavigationMemoryService {
   /// Carga datos guardados desde el almacenamiento local persistente a la memoria.
   Future<void> load() async {
     _inMemoryFavorites.clear();
+    _inMemoryFavoritePlaces.clear();
     _inMemoryReports.clear();
 
     if (_prefs != null) {
@@ -50,6 +54,14 @@ class SmartNavigationMemoryService {
         try {
           final map = jsonDecode(raw) as Map<String, dynamic>;
           _inMemoryFavorites.add(SavedFavoriteRoute.fromJson(map));
+        } catch (_) {}
+      }
+
+      final rawPlaces = _prefs.getStringList(_keyFavoritePlaces) ?? [];
+      for (final raw in rawPlaces) {
+        try {
+          final map = jsonDecode(raw) as Map<String, dynamic>;
+          _inMemoryFavoritePlaces.add(SavedFavoritePlace.fromJson(map));
         } catch (_) {}
       }
 
@@ -63,6 +75,39 @@ class SmartNavigationMemoryService {
     }
 
     _isLoaded = true;
+  }
+
+  // --- SECCIÓN: LUGARES FAVORITOS PUNTUALES ---
+
+  /// Obtiene los lugares favoritos guardados por el usuario, ordenados de más reciente a más antiguo.
+  List<SavedFavoritePlace> get favoritePlaces {
+    final list = List<SavedFavoritePlace>.from(_inMemoryFavoritePlaces);
+    list.sort(
+      (a, b) =>
+          (b.updatedAt ?? b.createdAt).compareTo(a.updatedAt ?? a.createdAt),
+    );
+    return List.unmodifiable(list);
+  }
+
+  /// Guarda o actualiza un lugar favorito en la memoria persistente.
+  Future<void> saveFavoritePlace(SavedFavoritePlace place) async {
+    _inMemoryFavoritePlaces.removeWhere((p) => p.id == place.id);
+    _inMemoryFavoritePlaces.add(place);
+    await _persistFavoritePlaces();
+  }
+
+  /// Elimina un lugar favorito por su identificador.
+  Future<void> deleteFavoritePlace(String id) async {
+    _inMemoryFavoritePlaces.removeWhere((p) => p.id == id);
+    await _persistFavoritePlaces();
+  }
+
+  Future<void> _persistFavoritePlaces() async {
+    if (_prefs == null) return;
+    final list = _inMemoryFavoritePlaces
+        .map((p) => jsonEncode(p.toJson()))
+        .toList();
+    await _prefs.setStringList(_keyFavoritePlaces, list);
   }
 
   // --- SECCIÓN: RUTAS FAVORITAS ---
@@ -135,12 +180,14 @@ class SmartNavigationMemoryService {
     await _persistReports();
   }
 
-  /// Elimina toda la información guardada por el usuario (rutas favoritas y reportes).
+  /// Elimina toda la información guardada por el usuario (rutas favoritas, lugares favoritos y reportes).
   Future<void> clearAllUserMemory() async {
     _inMemoryFavorites.clear();
+    _inMemoryFavoritePlaces.clear();
     _inMemoryReports.clear();
     if (_prefs != null) {
       await _prefs.remove(_keyFavorites);
+      await _prefs.remove(_keyFavoritePlaces);
       await _prefs.remove(_keyReports);
     }
   }

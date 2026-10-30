@@ -8,6 +8,7 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/storm_badge.dart';
 import '../../../../domain/entities/coordinates.dart';
 import '../../../../domain/entities/maneuver.dart';
+import '../../../../domain/entities/maneuver_type.dart';
 import '../../../../domain/entities/route_progress.dart';
 import '../../../../domain/services/route_progress_calculator.dart';
 import '../domain/entities/calculated_route.dart';
@@ -41,7 +42,10 @@ import 'state/gpx_route_tracker.dart';
 import 'state/imported_route_state.dart';
 import 'widgets/active_turn_by_turn_hud.dart';
 import 'widgets/destination_search_sheet.dart';
+import 'widgets/edit_favorite_place_dialog.dart';
+import 'widgets/favorite_places_sheet.dart';
 import 'widgets/favorite_routes_sheet.dart';
+import 'widgets/map_point_selection_card.dart';
 import 'widgets/gpx_live_tracking_panel.dart';
 import 'widgets/gpx_route_card.dart';
 import 'widgets/gpx_track_view.dart';
@@ -148,6 +152,10 @@ class NavigationScreenState extends State<NavigationScreen> {
   // Tracker activo (para rutas calculadas o GPX)
   GpxRouteTracker? _activeTracker;
   String? _lastTrackedRouteName;
+
+  // Selector manual de destinos en mapa
+  Destination? _mapSelectedDestination;
+  bool _isReverseGeocodingSelectedPoint = false;
 
   // Control de versión de ruta, curvatura vial, recálculo y cadencia BLE
   int _activeRouteVersion = 1;
@@ -414,6 +422,100 @@ class NavigationScreenState extends State<NavigationScreen> {
     _fitMapToCoordinates(updatedAlternative.geometry);
   }
 
+  Future<void> _openFavoritePlaces() async {
+    final place = await FavoritePlacesSheet.show(
+      context,
+      memoryService: _memoryService,
+    );
+    if (place != null && mounted) {
+      final destination = Destination(
+        id: 'place_${place.id}',
+        title: place.name,
+        subtitle:
+            place.notes ??
+            (place.address ??
+                'Coordenadas: ${place.coordinates.latitude.toStringAsFixed(5)}, ${place.coordinates.longitude.toStringAsFixed(5)}'),
+        coordinates: place.coordinates,
+        category: place.category.key,
+      );
+      _selectDestinationAndRoute(destination);
+    }
+  }
+
+  void _handleMapTapOrLongPress(LatLng point) {
+    if (_isNavigatingCalculatedRoute) return;
+
+    final coords = Coordinates(point.latitude, point.longitude);
+    final fallbackDestination = Destination(
+      id: 'point_${point.latitude.toStringAsFixed(5)}_${point.longitude.toStringAsFixed(5)}',
+      title: 'Ubicación seleccionada',
+      subtitle:
+          'Coordenadas: ${coords.latitude.toStringAsFixed(5)}, ${coords.longitude.toStringAsFixed(5)}',
+      coordinates: coords,
+      category: 'map_point',
+    );
+
+    setState(() {
+      _mapSelectedDestination = fallbackDestination;
+      _isReverseGeocodingSelectedPoint = true;
+    });
+
+    _geocodingService
+        .reverseGeocode(coords)
+        .then((reversed) {
+          if (mounted &&
+              _mapSelectedDestination?.coordinates.latitude ==
+                  coords.latitude &&
+              _mapSelectedDestination?.coordinates.longitude ==
+                  coords.longitude) {
+            setState(() {
+              _isReverseGeocodingSelectedPoint = false;
+              if (reversed != null && reversed.title.isNotEmpty) {
+                _mapSelectedDestination = Destination(
+                  id: fallbackDestination.id,
+                  title: reversed.title,
+                  subtitle: reversed.subtitle.isNotEmpty
+                      ? reversed.subtitle
+                      : fallbackDestination.subtitle,
+                  coordinates: coords,
+                  category: reversed.category ?? 'map_point',
+                );
+              }
+            });
+          }
+        })
+        .catchError((_) {
+          if (mounted) {
+            setState(() {
+              _isReverseGeocodingSelectedPoint = false;
+            });
+          }
+        });
+  }
+
+  Future<void> _handleSaveSelectedPointAsFavorite() async {
+    if (_mapSelectedDestination == null) return;
+    final dest = _mapSelectedDestination!;
+    final saved = await EditFavoritePlaceDialog.show(
+      context,
+      coordinates: dest.coordinates,
+      initialName: dest.title != 'Ubicación seleccionada' ? dest.title : '',
+      initialAddress: dest.subtitle,
+    );
+    if (saved != null) {
+      await _memoryService.saveFavoritePlace(saved);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lugar "${saved.name}" guardado en tus favoritos.'),
+            backgroundColor: AppColors.cyanLuminous,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openFavoriteRoutes() async {
     final fav = await FavoriteRoutesSheet.show(
       context,
@@ -566,13 +668,37 @@ class NavigationScreenState extends State<NavigationScreen> {
         } catch (_) {}
       }
 
-      if (step != null) {
-        _voiceService.processManeuverGuidance(
-          maneuverIndex: step.maneuverIndex,
-          maneuver: step.activeManeuver,
-          distanceToManeuverMeters: step.distanceToManeuverMeters,
-          currentSpeedKmh: pos.speedKmh ?? 0.0,
-        );
+      // Continuidad en carreteras nacionales:
+      // Si step == null (típico en vías nacionales largas sin cruces o en tramos GPX sin giros discretos),
+      // construir un paso de mantenimiento de vía (straight) con la distancia restante al destino
+      final effectiveStep =
+          step ??
+          (_activeTracker != null
+              ? NavigationManeuverStep(
+                  activeManeuver: Maneuver(
+                    type: ManeuverType.straight,
+                    location:
+                        _calculatedRoute?.destination ??
+                        _activeTracker!.route.destination,
+                    instructionText: 'Continuar por la vía principal',
+                    roadName: _calculatedRoute?.summary ?? 'Carretera',
+                  ),
+                  distanceToManeuverMeters:
+                      _activeTracker!.remainingDistanceMeters,
+                  maneuverIndex: 9999,
+                  isLastManeuver: false,
+                )
+              : null);
+
+      if (effectiveStep != null) {
+        if (step != null) {
+          _voiceService.processManeuverGuidance(
+            maneuverIndex: step.maneuverIndex,
+            maneuver: step.activeManeuver,
+            distanceToManeuverMeters: step.distanceToManeuverMeters,
+            currentSpeedKmh: pos.speedKmh ?? 0.0,
+          );
+        }
 
         // Puente reactivo hacia el display del Tripper Pod con control de cadencia,
         // aislamiento de fuente seleccionada y sin enviar instrucciones ficticias cuando el tipo es unknown.
@@ -582,34 +708,35 @@ class NavigationScreenState extends State<NavigationScreen> {
         if (selectedSource == SelectedNavigationSourceType.internal &&
             _tripperBleService.currentState.isReadyForNavigation) {
           final opcode = TripperProtocol.mapManeuverToTripperCode(
-            step.activeManeuver.type,
+            effectiveStep.activeManeuver.type,
           );
           if (opcode == null) {
             _tripperBleService.clearActiveNavPacket(
               reason:
-                  'Maniobra interna desconocida (${step.activeManeuver.type.name})',
+                  'Maniobra interna desconocida (${effectiveStep.activeManeuver.type.name})',
             );
           } else {
             final now = DateTime.now();
-            final distRounded = step.distanceToManeuverMeters.round();
-            final stepChanged = _lastBleStepIndex != step.maneuverIndex;
+            final distRounded = effectiveStep.distanceToManeuverMeters.round();
+            final stepChanged =
+                _lastBleStepIndex != effectiveStep.maneuverIndex;
             final distanceDeltaEnough =
                 _lastBleDistanceMeters == null ||
-                (_lastBleDistanceMeters! - distRounded).abs() >= 5;
+                (_lastBleDistanceMeters! - distRounded).abs() >= 10;
             final cadenceElapsed =
                 _lastBleSentAt == null ||
                 now.difference(_lastBleSentAt!) >=
-                    const Duration(milliseconds: 750);
+                    const Duration(milliseconds: 1500);
 
             if (stepChanged || (distanceDeltaEnough && cadenceElapsed)) {
-              _lastBleStepIndex = step.maneuverIndex;
+              _lastBleStepIndex = effectiveStep.maneuverIndex;
               _lastBleDistanceMeters = distRounded;
               _lastBleSentAt = now;
               _tripperBleService.sendManeuver(
                 TripperManeuverPayload.fromManeuver(
-                  type: step.activeManeuver.type,
+                  type: effectiveStep.activeManeuver.type,
                   distanceMeters: distRounded,
-                  nextStreet: step.activeManeuver.roadName ?? '',
+                  nextStreet: effectiveStep.activeManeuver.roadName ?? '',
                 ),
               );
             }
@@ -1253,9 +1380,13 @@ class NavigationScreenState extends State<NavigationScreen> {
             accuracyMeters: _accuracyMeters,
             routeGeometry: activeGeometry,
             alternativeGeometries: unselectedGeometries,
-            destinationCoordinates: _selectedDestination?.coordinates,
+            destinationCoordinates:
+                _mapSelectedDestination?.coordinates ??
+                _selectedDestination?.coordinates,
             onRecenter: _recenterMapOnUser,
             controlsBottomOffset: mapControlsBottomOffset,
+            onTap: (_, point) => _handleMapTapOrLongPress(point),
+            onLongPress: (_, point) => _handleMapTapOrLongPress(point),
           ),
         ),
 
@@ -1304,6 +1435,33 @@ class NavigationScreenState extends State<NavigationScreen> {
             left: 16.0,
             right: 16.0,
             child: _buildGpxErrorCard(routeState, isDark),
+          ),
+
+        // 4c. Tarjeta de acción para punto seleccionado directamente en el mapa
+        if (_mapSelectedDestination != null &&
+            !_isNavigatingCalculatedRoute &&
+            _calculatedRoute == null)
+          Positioned(
+            bottom: 24.0,
+            left: 16.0,
+            right: 16.0,
+            child: MapPointSelectionCard(
+              destination: _mapSelectedDestination!,
+              isReverseGeocoding: _isReverseGeocodingSelectedPoint,
+              onStartNavigation: () {
+                final dest = _mapSelectedDestination!;
+                setState(() {
+                  _mapSelectedDestination = null;
+                });
+                _selectDestinationAndRoute(dest);
+              },
+              onSaveFavorite: _handleSaveSelectedPointAsFavorite,
+              onClose: () {
+                setState(() {
+                  _mapSelectedDestination = null;
+                });
+              },
+            ),
           ),
 
         // 5. Tarjeta de resumen y selección de alternativas (antes de iniciar navegación)
@@ -1397,8 +1555,10 @@ class NavigationScreenState extends State<NavigationScreen> {
             ),
           ),
 
-        // 7. Botones flotantes inferiores: Importar ruta GPX y Rutas Favoritas
-        if (!_isNavigatingCalculatedRoute && _calculatedRoute == null)
+        // 7. Botones flotantes inferiores: Importar GPX, Lugares Favoritos y Rutas Favoritas
+        if (!_isNavigatingCalculatedRoute &&
+            _calculatedRoute == null &&
+            _mapSelectedDestination == null)
           Positioned(
             left: 16.0,
             bottom: 24.0,
@@ -1412,7 +1572,25 @@ class NavigationScreenState extends State<NavigationScreen> {
                   child: FilledButton.tonalIcon(
                     onPressed: () => _handleImportGpx(routeState),
                     icon: const Icon(Icons.file_upload_outlined, size: 16.0),
-                    label: const Text('Importar ruta GPX'),
+                    label: const Text('GPX'),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                Material(
+                  color: isDark ? AppColors.nightBlue : AppColors.whiteSurface,
+                  elevation: 4.0,
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: FilledButton.tonalIcon(
+                    onPressed: _openFavoritePlaces,
+                    icon: const Icon(
+                      Icons.star_rounded,
+                      size: 18.0,
+                      color: AppColors.cyanLuminous,
+                    ),
+                    label: const Text('Favoritos'),
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),
@@ -1426,11 +1604,11 @@ class NavigationScreenState extends State<NavigationScreen> {
                   child: FilledButton.tonalIcon(
                     onPressed: _openFavoriteRoutes,
                     icon: const Icon(
-                      Icons.star_rounded,
-                      size: 18.0,
-                      color: AppColors.cyanLuminous,
+                      Icons.alt_route_rounded,
+                      size: 16.0,
+                      color: AppColors.electricBlue,
                     ),
-                    label: const Text('Favoritas'),
+                    label: const Text('Rutas'),
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),

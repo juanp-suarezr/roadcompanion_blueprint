@@ -1121,8 +1121,19 @@ class FlutterBluePlusTripperService implements TripperBleService {
     // 3. Regresar al estado autenticado (enlace BLE activo en reposo)
     _setState(TripperConnectionState.authenticated);
 
-    // 4. Enviar inmediatamente un PING_FW para mantener vivo el enlace BLE en reposo
-    // (NO se envía CMD_SET_TIME porque no es un comando de salida de navegación según protocolo).
+    // 4. Salida formal y segura de la pantalla de navegación:
+    // El firmware del Tripper Pod cuenta con un watchdog de pantalla de ~5s si está en modo 0x10 0x11.
+    // Para retornar ordenadamente a la visualización del reloj nativo sin que el hardware aborte la conexión,
+    // se emite un paquete formal de sincronización de hora (CMD_SET_TIME 0x50), seguido del keepalive de reposo PING_FW.
+    _log(
+      '[NAV-STOP-EXIT] Emitiendo CMD_SET_TIME para ordenar al Pod regresar al modo reloj nativo...',
+    );
+    final timePacket = TripperProtocol.buildSetTimeNowPacket();
+    await _enqueuePacket(
+      timePacket,
+      description: 'CMD_SET_TIME (transición a reloj nativo post-navegación)',
+    );
+
     _log(
       '[NAV-STOP-KEEPALIVE] Emitiendo PING_FW inmediato para mantener la conexión BLE en modo reposo...',
     );
@@ -1132,7 +1143,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
     );
 
     _log(
-      '[NAV-STOP-COMPLETE] Navegación detenida. Enlace BLE mantenido en reposo con watchdog PING_FW cada 2s. '
+      '[NAV-STOP-COMPLETE] Navegación detenida. Enlace BLE mantenido en reposo con reloj sincronizado y watchdog PING_FW cada 2s. '
       '(Resultado PING_FW inicial: ${pingOk ? "OK" : "FALLO"}).',
     );
     return true;

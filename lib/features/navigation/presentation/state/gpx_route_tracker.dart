@@ -329,25 +329,31 @@ class GpxRouteTracker extends ChangeNotifier {
       maxValidSegment,
     );
 
+    // Lookahead dinámico adaptado a la velocidad del motociclista en carreteras nacionales
+    // A 80 km/h (22 m/s), los segmentos pasan rápidamente; ampliamos el lookahead proporcionalmente
+    final effectiveLookahead = pos.speedKmh != null && pos.speedKmh! > 60.0
+        ? (lookaheadSegments * 2.5).round().clamp(12, 35)
+        : lookaheadSegments;
+
     try {
       var progress = _calculator.calculate(
         geometry: geometry,
         currentPosition: pos.coordinates,
         totalDistanceMeters: route.totalGeographicDistanceMeters,
         lastKnownSegmentIndex: safeSegmentIndex,
-        maxSegmentLookahead: lookaheadSegments,
+        maxSegmentLookahead: effectiveLookahead,
       );
 
-      // Si la ventana corta de 8 segmentos sugiere desvío (ej. geometría muy densa o reincorporación
-      // tras salto GPS), verificar ventana extendida hacia adelante antes de declarar offRoute.
+      // Si la ventana corta sugiere desvío (ej. curvas consecutivas o salto GPS en montaña),
+      // verificar ventana extendida hacia adelante antes de declarar offRoute.
       if (progress.distanceToRouteMeters > offRouteThresholdMeters &&
-          geometry.length > safeSegmentIndex + lookaheadSegments) {
+          geometry.length > safeSegmentIndex + effectiveLookahead) {
         final recoveryCandidate = _calculator.calculate(
           geometry: geometry,
           currentPosition: pos.coordinates,
           totalDistanceMeters: route.totalGeographicDistanceMeters,
           lastKnownSegmentIndex: safeSegmentIndex,
-          maxSegmentLookahead: 45,
+          maxSegmentLookahead: 60,
         );
         if (recoveryCandidate.distanceToRouteMeters <=
             offRouteThresholdMeters) {

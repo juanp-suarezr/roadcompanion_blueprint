@@ -38,6 +38,38 @@ class NominatimGeocodingService implements GeocodingService {
 
   OsmPoiService get osmPoiService => _osmPoiService;
 
+  /// Expresión regular para detectar coordenadas decimales ingresadas directamente en la búsqueda
+  /// (ej: "4.78389, -75.05948" o "4.78389 -75.05948").
+  static final RegExp _latLngPattern = RegExp(
+    r'^\s*([-+]?(?:[1-8]?\d(?:\.\d+)?|90(?:\.0+)?))(?:\s*,\s*|\s+)([-+]?(?:180(?:\.0+)?|(?:1[0-7]\d|[1-9]?\d)(?:\.\d+)?))\s*$',
+  );
+
+  /// Intenta parsear una consulta como coordenadas geográficas directas.
+  static Destination? tryParseCoordinatesQuery(String query) {
+    final match = _latLngPattern.firstMatch(query.trim());
+    if (match != null) {
+      final lat = double.tryParse(match.group(1)!);
+      final lon = double.tryParse(match.group(2)!);
+      if (lat != null &&
+          lon != null &&
+          lat >= -90.0 &&
+          lat <= 90.0 &&
+          lon >= -180.0 &&
+          lon <= 180.0) {
+        final latStr = lat.toStringAsFixed(5);
+        final lonStr = lon.toStringAsFixed(5);
+        return Destination(
+          id: 'coord_${latStr}_$lonStr',
+          title: 'Coordenadas: $latStr, $lonStr',
+          subtitle: 'Ubicación geográfica directa',
+          coordinates: Coordinates(lat, lon),
+          category: 'coordinates',
+        );
+      }
+    }
+    return null;
+  }
+
   @override
   Future<List<Destination>> search(
     String query, {
@@ -45,7 +77,33 @@ class NominatimGeocodingService implements GeocodingService {
     int limit = 10,
   }) async {
     final cleanQuery = query.trim();
-    if (cleanQuery.isEmpty || cleanQuery.length < 2) {
+    if (cleanQuery.isEmpty) {
+      return [];
+    }
+
+    // 1. Detección inmediata de coordenadas decimales
+    final directCoord = tryParseCoordinatesQuery(cleanQuery);
+    if (directCoord != null) {
+      // Opcionalmente intentar enriquecer con geocodificación inversa sin bloquear
+      try {
+        final reversed = await reverseGeocode(directCoord.coordinates);
+        if (reversed != null && reversed.title.isNotEmpty) {
+          return [
+            Destination(
+              id: directCoord.id,
+              title: reversed.title,
+              subtitle:
+                  '${reversed.subtitle.isNotEmpty ? "${reversed.subtitle} • " : ""}Coordenadas: ${directCoord.coordinates.latitude.toStringAsFixed(5)}, ${directCoord.coordinates.longitude.toStringAsFixed(5)}',
+              coordinates: directCoord.coordinates,
+              category: reversed.category ?? 'coordinates',
+            ),
+          ];
+        }
+      } catch (_) {}
+      return [directCoord];
+    }
+
+    if (cleanQuery.length < 2) {
       return [];
     }
 
@@ -121,7 +179,7 @@ class NominatimGeocodingService implements GeocodingService {
       final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
       var results = _deduplicateDestinations(_parseDestinationList(list));
 
-      // Fallback controlado: si la consulta original no arrojó resultados y contiene
+      // Fallback 1: Si la consulta original no arrojó resultados y contiene
       // abreviaturas viales colombianas (Cra, Cl, Av, #) o prefijos "Barrio"/"Vereda",
       // reintentar con la consulta normalizada.
       if (results.isEmpty) {
@@ -135,23 +193,35 @@ class NominatimGeocodingService implements GeocodingService {
             '/search',
             fallbackParams,
           );
-          final fallbackResp = await _client
-              .get(
-                fallbackUri,
-                headers: {
-                  'User-Agent': _userAgent,
-                  'Accept': 'application/json',
-                },
-              )
-              .timeout(const Duration(seconds: 8));
-          if (fallbackResp.statusCode == 200) {
-            final List<dynamic> fallbackList =
-                jsonDecode(fallbackResp.body) as List<dynamic>;
-            results = _deduplicateDestinations(
-              _parseDestinationList(fallbackList),
-            );
-          }
+          try {
+            final fallbackResp = await _client
+                .get(
+                  fallbackUri,
+                  headers: {
+                    'User-Agent': _userAgent,
+                    'Accept': 'application/json',
+                  },
+                )
+                .timeout(const Duration(seconds: 8));
+            if (fallbackResp.statusCode == 200) {
+              final List<dynamic> fallbackList =
+                  jsonDecode(fallbackResp.body) as List<dynamic>;
+              results = _deduplicateDestinations(
+                _parseDestinationList(fallbackList),
+              );
+            }
+          } catch (_) {}
         }
+      }
+
+      // Fallback 2: Si Nominatim aún no arrojó resultados (típico en veredas, miradores,
+      // picos o topónimos rurales de Colombia), consultar el motor Photon (Komoot OSM).
+      if (results.isEmpty) {
+        results = await _queryPhotonFallback(
+          cleanQuery,
+          limit: limit,
+          proximityHint: proximityHint,
+        );
       }
 
       NavigationDiagnosticLogger.logSearchResults(
@@ -632,5 +702,92 @@ class NominatimGeocodingService implements GeocodingService {
       return subtitleParts.sublist(1).take(3).map((e) => e.trim()).join(', ');
     }
     return displayName;
+  }
+
+  /// Consulta el motor Photon (Komoot OSM) como fallback para topónimos rurales, veredas y accidentes geográficos.
+  Future<List<Destination>> _queryPhotonFallback(
+    String query, {
+    int limit = 10,
+    Coordinates? proximityHint,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'q': query,
+        'limit': limit.toString(),
+        'lang': 'es',
+      };
+      if (proximityHint != null) {
+        queryParams['lat'] = proximityHint.latitude.toString();
+        queryParams['lon'] = proximityHint.longitude.toString();
+      }
+
+      final uri = Uri.https('photon.komoot.io', '/api/', queryParams);
+      final response = await _client
+          .get(
+            uri,
+            headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 6));
+
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final features = data['features'] as List<dynamic>? ?? [];
+      final results = <Destination>[];
+
+      for (final f in features) {
+        final feature = f as Map<String, dynamic>;
+        final props = feature['properties'] as Map<String, dynamic>? ?? {};
+        final geom = feature['geometry'] as Map<String, dynamic>? ?? {};
+        final coords = geom['coordinates'] as List<dynamic>? ?? [];
+
+        if (coords.length < 2) continue;
+        final lon = (coords[0] as num).toDouble();
+        final lat = (coords[1] as num).toDouble();
+
+        // Filtrar prioritariamente por Colombia si no se especifica país
+        final countryCode = (props['countrycode'] as String?)?.toUpperCase();
+        if (countryCode != null && countryCode != 'CO') continue;
+
+        final name = (props['name'] as String?)?.trim() ?? '';
+        if (name.isEmpty) continue;
+
+        final city =
+            props['city'] ??
+            props['town'] ??
+            props['district'] ??
+            props['county'];
+        final state = props['state'] ?? '';
+        final country = props['country'] ?? 'Colombia';
+
+        final subtitleParts = <String>[];
+        if (city != null && city.toString().trim().isNotEmpty) {
+          subtitleParts.add(city.toString().trim());
+        }
+        if (state.toString().trim().isNotEmpty) {
+          subtitleParts.add(state.toString().trim());
+        }
+        if (subtitleParts.isEmpty) {
+          subtitleParts.add(country.toString().trim());
+        }
+
+        final osmId = props['osm_id']?.toString() ?? 'photon_${lat}_$lon';
+        final osmValue = props['osm_value'] as String?;
+
+        results.add(
+          Destination(
+            id: osmId,
+            title: name,
+            subtitle: subtitleParts.join(', '),
+            coordinates: Coordinates(lat, lon),
+            category: osmValue,
+          ),
+        );
+      }
+
+      return _deduplicateDestinations(results);
+    } catch (_) {
+      return [];
+    }
   }
 }

@@ -28,6 +28,8 @@ class RealMapWidget extends StatelessWidget {
   final String? cartoApiKey;
   final double controlsBottomOffset;
   final List<Marker>? additionalMarkers;
+  final void Function(TapPosition tapPosition, LatLng point)? onTap;
+  final void Function(TapPosition tapPosition, LatLng point)? onLongPress;
 
   const RealMapWidget({
     super.key,
@@ -48,6 +50,8 @@ class RealMapWidget extends StatelessWidget {
     this.cartoApiKey,
     this.controlsBottomOffset = 120.0,
     this.additionalMarkers,
+    this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -187,6 +191,8 @@ class RealMapWidget extends StatelessWidget {
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all,
             ),
+            onTap: onTap,
+            onLongPress: onLongPress,
           ),
           children: [
             // Capa de teselas cartográficas (CartoDB Dark Matter / OSM estándar)
