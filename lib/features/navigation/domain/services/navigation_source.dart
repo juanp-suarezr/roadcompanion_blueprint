@@ -14,6 +14,9 @@ import 'tripper_ble_service.dart';
 
 /// Fuente de navegación principal seleccionada por el usuario para el viaje.
 enum SelectedNavigationSourceType {
+  /// Detección y selección automática del navegador externo activo (Waze o Google Maps).
+  auto,
+
   /// Navegador interno de RoadCompanion (OSRM + GPX + geometría vial verificada).
   internal,
 
@@ -25,6 +28,8 @@ enum SelectedNavigationSourceType {
 
   String get displayName {
     switch (this) {
+      case SelectedNavigationSourceType.auto:
+        return 'AUTO (Waze / Google Maps)';
       case SelectedNavigationSourceType.internal:
         return 'RoadCompanion Interno';
       case SelectedNavigationSourceType.waze:
@@ -36,6 +41,8 @@ enum SelectedNavigationSourceType {
 
   String? get androidPackageName {
     switch (this) {
+      case SelectedNavigationSourceType.auto:
+        return 'all';
       case SelectedNavigationSourceType.internal:
         return 'none';
       case SelectedNavigationSourceType.waze:
@@ -47,6 +54,7 @@ enum SelectedNavigationSourceType {
 
   BridgeSourceType? get bridgeSourceType {
     switch (this) {
+      case SelectedNavigationSourceType.auto:
       case SelectedNavigationSourceType.internal:
         return null;
       case SelectedNavigationSourceType.waze:
@@ -58,13 +66,15 @@ enum SelectedNavigationSourceType {
 
   static SelectedNavigationSourceType fromStorageKey(String? raw) {
     switch (raw) {
+      case 'internal':
+        return SelectedNavigationSourceType.internal;
       case 'waze':
         return SelectedNavigationSourceType.waze;
       case 'googleMaps':
         return SelectedNavigationSourceType.googleMaps;
-      case 'internal':
+      case 'auto':
       default:
-        return SelectedNavigationSourceType.internal;
+        return SelectedNavigationSourceType.auto;
     }
   }
 }
@@ -320,6 +330,40 @@ class GoogleMapsNavigationSource implements NavigationSource {
   }
 }
 
+/// Fuente de navegación externa en modo AUTO (Waze o Google Maps arbitrados dinámicamente).
+class AutoNavigationSource implements NavigationSource {
+  const AutoNavigationSource();
+
+  @override
+  SelectedNavigationSourceType get sourceType =>
+      SelectedNavigationSourceType.auto;
+
+  @override
+  NavigationSourceCapabilities
+  get capabilities => const NavigationSourceCapabilities(
+    providesManeuvers: true,
+    providesDistances: true,
+    providesRoadGeometry: false,
+    supportsRealCurveDetection: false,
+    requiresNotificationAccess: true,
+    limitationDisclosure:
+        'Modo AUTO: detecta dinámicamente si Waze o Google Maps proporcionan maniobras turn-by-turn válidas y sincroniza con el Tripper Pod. No expone geometría vial ni inventa curvas.',
+  );
+
+  @override
+  RoadCurvatureInfo evaluateCurvature({
+    List<Coordinates> geometry = const [],
+    double traveledDistanceMeters = 0.0,
+    List<Maneuver> maneuvers = const [],
+    int routeVersion = 1,
+  }) {
+    return RoadCurvatureInfo.insufficient(
+      geometrySource: GeometrySource.none,
+      routeVersion: routeVersion,
+    );
+  }
+}
+
 /// Máquina de estados explícita de navegación y sincronización BLE (Sección 9).
 ///
 /// Garantiza las 6 reglas críticas:
@@ -370,6 +414,7 @@ class CompanionNavigationStateMachine {
 
     final changed = _activeSource.sourceType != type;
     _activeSource = switch (type) {
+      SelectedNavigationSourceType.auto => const AutoNavigationSource(),
       SelectedNavigationSourceType.internal => const InternalNavigationSource(),
       SelectedNavigationSourceType.waze => const WazeNavigationSource(),
       SelectedNavigationSourceType.googleMaps =>
@@ -410,11 +455,13 @@ class CompanionNavigationStateMachine {
   Future<void> onExternalInstruction(
     BridgeNavigationInstruction instruction,
   ) async {
-    // Ignorar eventos que no correspondan a la fuente seleccionada
-    final expectedBridgeSource = _activeSource.sourceType.bridgeSourceType;
-    if (expectedBridgeSource == null ||
-        instruction.source != expectedBridgeSource) {
-      return;
+    // Ignorar eventos que no correspondan a la fuente seleccionada (en modo AUTO se aceptan Waze y Maps)
+    if (_activeSource.sourceType != SelectedNavigationSourceType.auto) {
+      final expectedBridgeSource = _activeSource.sourceType.bridgeSourceType;
+      if (expectedBridgeSource == null ||
+          instruction.source != expectedBridgeSource) {
+        return;
+      }
     }
 
     // Regla 3: si la notificación fue eliminada o expiró, cancelar instrucción activa

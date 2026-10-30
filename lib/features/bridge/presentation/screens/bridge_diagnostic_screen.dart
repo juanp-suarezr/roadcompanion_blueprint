@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/state/app_settings_state.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../domain/entities/maneuver_type.dart';
+import '../../../navigation/domain/services/navigation_diagnostic_logger.dart';
 import '../../../navigation/domain/services/navigation_source.dart';
 import '../../../navigation/infrastructure/services/flutter_blue_plus_tripper_service.dart';
 import '../../domain/entities/bridge_instruction_status.dart';
@@ -14,10 +15,11 @@ import '../state/bridge_diagnostic_controller.dart';
 ///
 /// Permite al motociclista verificar en tiempo real:
 /// 1. Selección de fuente del viaje (Waze, Google Maps o Interno).
-/// 2. El estado del permiso del sistema Android (Notification Listener) con refresco en `onResume`.
-/// 3. El estado explícito de la máquina de navegación (`CompanionNavigationState`).
+/// 2. Separación explícita entre Fuente seleccionada, Fuente activa del viaje,
+///    Última fuente que emitió un evento y Estado de navegación.
+/// 3. El estado del permiso del sistema Android (Notification Listener) con refresco en `onResume`.
 /// 4. La disponibilidad de geometría vial y detección de curvas según la fuente activa.
-/// 5. La extracción de maniobras, distancias y calles por el parser independiente.
+/// 5. La extracción de maniobras, distancias, calles, extras, RemoteViews y trazabilidad correlacionada.
 class BridgeDiagnosticScreen extends StatefulWidget {
   final BridgeDiagnosticController? controller;
 
@@ -31,6 +33,7 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
     with WidgetsBindingObserver {
   late final BridgeDiagnosticController _controller;
   bool _isInternalController = false;
+  bool _didInitializeController = false;
 
   @override
   void initState() {
@@ -41,26 +44,34 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
     } else {
       _controller = BridgeDiagnosticController(
         bleService: FlutterBluePlusTripperService(),
+        strictSourceFilter: true,
       );
       _isInternalController = true;
     }
-    _controller.initialize();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    SelectedNavigationSourceType? scopedSource;
     try {
       final scope = context
           .dependOnInheritedWidgetOfExactType<AppSettingsScope>();
-      final settings = scope?.notifier;
-      if (settings != null) {
-        _controller.selectNavigationSource(
-          settings.selectedNavigationSource,
-          strictFilter: true,
-        );
-      }
+      scopedSource = scope?.notifier?.selectedNavigationSource;
     } catch (_) {}
+
+    if (!_didInitializeController) {
+      _didInitializeController = true;
+      _controller.initialize(
+        initialTripSource: scopedSource,
+        strictFilter: _isInternalController ? true : null,
+      );
+      return;
+    }
+
+    if (scopedSource != null && _controller.selectedSource != scopedSource) {
+      _controller.selectNavigationSource(scopedSource, strictFilter: true);
+    }
   }
 
   @override
@@ -111,7 +122,7 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
             ),
             actions: [
               IconButton(
-                tooltip: 'Actualizar permiso',
+                tooltip: 'Actualizar permiso y sincronizar notificaciones',
                 icon: const Icon(Icons.refresh, color: AppColors.cyanLuminous),
                 onPressed: () => _controller.checkPermission(),
               ),
@@ -131,9 +142,11 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
               const SizedBox(height: 16),
               _buildLatestInstructionSection(),
               const SizedBox(height: 16),
-              _buildSourceSelectorCard(context),
+              _buildAutoSourceStatusCard(),
               const SizedBox(height: 16),
               _buildGeometryAndCurvesStatusCard(),
+              const SizedBox(height: 16),
+              _buildCorrelatedTraceSection(),
               const SizedBox(height: 16),
               _buildHistorySection(),
             ],
@@ -143,84 +156,195 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
     );
   }
 
-  Widget _buildSourceSelectorCard(BuildContext context) {
-    final current = _controller.selectedSource;
+  Widget _buildAutoSourceStatusCard() {
+    final activeSourceText = _controller.activeSourceDisplayName;
+    final lastInstruction = _controller.lastInstruction;
+    final lastInstructionText =
+        (lastInstruction != null &&
+            lastInstruction.isCompatibleWithTripper &&
+            !lastInstruction.isStale)
+        ? '${lastInstruction.maneuverType.name}${lastInstruction.distanceMeters != null ? " • ${lastInstruction.distanceMeters} m" : ""}${lastInstruction.destinationStreet != null ? " hacia ${lastInstruction.destinationStreet}" : ""}'
+        : (lastInstruction != null && lastInstruction.isStale
+              ? 'Ruta finalizada o cancelada'
+              : (lastInstruction?.isAppRunningNotification == true
+                    ? 'App en ejecución (sin maniobra)'
+                    : 'Sin instrucción de giro activa'));
+
+    final lastInstructionTime = lastInstruction != null
+        ? lastInstruction.receivedAt.toIso8601String().substring(11, 19)
+        : '--:--:--';
+
+    final nativeListenerStatus = _controller.isListening
+        ? 'Escucha activa (Android)'
+        : 'Inactiva';
+
+    final tripperBleStatus = _controller.lastTransmittedToTripper
+        ? 'Sincronizado / Transmitiendo'
+        : 'Conectado a BLE / En espera';
+
+    final navigationStateText = _controller.companionState.displayName;
+
+    Color activeSourceColor = AppColors.secondaryText;
+    if (activeSourceText == 'Waze') {
+      activeSourceColor = const Color(0xFF33CCFF);
+    } else if (activeSourceText == 'Google Maps') {
+      activeSourceColor = const Color(0xFF4285F4);
+    } else if (activeSourceText == 'RoadCompanion Interno') {
+      activeSourceColor = AppColors.cyanLuminous;
+    }
+
     return Container(
+      key: const ValueKey('auto_source_mode_card'),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surfaceNavy,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardNavy),
+        border: Border.all(
+          color: AppColors.cyanLuminous.withValues(alpha: 0.4),
+          width: 1.2,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.alt_route_rounded,
-                color: AppColors.cyanLuminous,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'FUENTE DE NAVEGACIÓN DEL VIAJE',
-                  style: TextStyle(
-                    color: AppColors.coldWhite,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.6,
-                  ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.cyanLuminous.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      color: AppColors.cyanLuminous,
+                      size: 14,
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      'MODO DE FUENTE: AUTO',
+                      style: TextStyle(
+                        color: AppColors.cyanLuminous,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.cyanLuminous.withValues(alpha: 0.14),
+                  color: AppColors.cardNavy,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(
-                  _controller.companionState.displayName,
-                  style: const TextStyle(
-                    color: AppColors.cyanLuminous,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
+                child: const Text(
+                  'Filtro: Maps | Waze',
+                  style: TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 10,
+                    fontFamily: 'monospace',
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: SelectedNavigationSourceType.values.map((source) {
-              final selected = current == source;
-              return ChoiceChip(
-                key: ValueKey('companion_source_${source.name}'),
-                label: Text('Fuente: ${source.displayName}'),
-                selected: selected,
-                selectedColor: AppColors.cyanLuminous,
-                backgroundColor: AppColors.nightBlue,
-                labelStyle: TextStyle(
-                  color: selected ? AppColors.nightBlue : AppColors.coldWhite,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.nightBlue,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.cardNavy),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAutoInfoRow(
+                  'Fuente activa',
+                  activeSourceText,
+                  valueColor: activeSourceColor,
+                  isBold: true,
                 ),
-                onSelected: (_) {
-                  _controller.selectNavigationSource(source);
-                  try {
-                    final scope = context
-                        .dependOnInheritedWidgetOfExactType<AppSettingsScope>();
-                    scope?.notifier?.setSelectedNavigationSource(source);
-                  } catch (_) {}
-                },
-              );
-            }).toList(),
+                const SizedBox(height: 6),
+                _buildAutoInfoRow(
+                  'Última instrucción',
+                  lastInstructionText,
+                  valueColor: AppColors.coldWhite,
+                ),
+                const SizedBox(height: 6),
+                _buildAutoInfoRow(
+                  'Hora instrucción',
+                  lastInstructionTime,
+                  valueColor: AppColors.secondaryText,
+                ),
+                const SizedBox(height: 6),
+                _buildAutoInfoRow(
+                  'Escucha nativa',
+                  nativeListenerStatus,
+                  valueColor: _controller.isListening
+                      ? AppColors.success
+                      : AppColors.warning,
+                ),
+                const SizedBox(height: 6),
+                _buildAutoInfoRow(
+                  'Conexión Tripper',
+                  tripperBleStatus,
+                  valueColor: _controller.lastTransmittedToTripper
+                      ? AppColors.cyanLuminous
+                      : AppColors.secondaryText,
+                ),
+                const SizedBox(height: 6),
+                _buildAutoInfoRow(
+                  'Estado navegación',
+                  navigationStateText,
+                  valueColor: AppColors.coldWhite,
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAutoInfoRow(
+    String label,
+    String value, {
+    Color valueColor = AppColors.coldWhite,
+    bool isBold = false,
+  }) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 130,
+          child: Text(
+            '$label: ',
+            style: const TextStyle(
+              color: AppColors.secondaryText,
+              fontSize: 11,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 11,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -389,12 +513,15 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
                 ),
               ),
               const Spacer(),
-              const Text(
-                'Filtro: Maps | Waze',
-                style: TextStyle(
-                  color: AppColors.secondaryText,
-                  fontSize: 11,
-                  fontFamily: 'monospace',
+              Flexible(
+                child: Text(
+                  'Filtro: ${_controller.activeFilterLabel}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
             ],
@@ -604,7 +731,9 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
                 Text(
                   instruction.rawText.isNotEmpty
                       ? instruction.rawText
-                      : '(Sin texto disponible)',
+                      : (instruction.isEmptyNotification
+                            ? '(Notificación recibida sin texto extraíble en Android)'
+                            : '(Sin texto disponible)'),
                   style: const TextStyle(
                     color: AppColors.coldWhite,
                     fontSize: 12,
@@ -620,6 +749,16 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
                     fontFamily: 'monospace',
                   ),
                 ),
+                if (instruction.notificationKey != null ||
+                    instruction.notificationCategory != null)
+                  Text(
+                    'Notificación: key=${instruction.notificationKey ?? "n/a"} | cat=${instruction.notificationCategory ?? "n/a"}',
+                    style: const TextStyle(
+                      color: AppColors.secondaryText,
+                      fontSize: 10.5,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
                 Text(
                   'Extras: ${instruction.availableExtras.isEmpty ? "(no reportados)" : instruction.availableExtras.join(", ")}',
                   style: const TextStyle(
@@ -663,9 +802,69 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
     );
   }
 
+  Widget _buildCorrelatedTraceSection() {
+    final traces = NavigationDiagnosticLogger.getCorrelatedEntries();
+    if (traces.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceNavy,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardNavy),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'TRAZABILIDAD CORRELACIONADA POR EVENTO',
+                style: TextStyle(
+                  color: AppColors.cyanLuminous,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              Text(
+                '${traces.length} pasos',
+                style: const TextStyle(
+                  color: AppColors.secondaryText,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...traces
+              .take(8)
+              .map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    entry.format(),
+                    style: const TextStyle(
+                      color: AppColors.secondaryText,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHistorySection() {
-    final history = _controller.sessionHistory;
-    if (history.isEmpty) return const SizedBox.shrink();
+    final historyItems = _controller.historyItems;
+    final fallbackHistory = _controller.sessionHistory;
+    final count = historyItems.isNotEmpty
+        ? historyItems.length
+        : fallbackHistory.length;
+    if (count == 0) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -683,7 +882,7 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
               ),
             ),
             Text(
-              '${history.length} eventos',
+              '$count eventos',
               style: const TextStyle(
                 color: AppColors.secondaryText,
                 fontSize: 11,
@@ -692,8 +891,134 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
           ],
         ),
         const SizedBox(height: 8),
-        ...history.take(10).map((inst) => _buildHistoryTile(inst)),
+        if (historyItems.isNotEmpty)
+          ...historyItems
+              .take(12)
+              .map((item) => _buildCategorizedHistoryTile(item))
+        else
+          ...fallbackHistory.take(10).map((inst) => _buildHistoryTile(inst)),
       ],
+    );
+  }
+
+  Widget _buildCategorizedHistoryTile(DiagnosticHistoryItem item) {
+    final inst = item.instruction;
+    final (badgeBg, badgeFg) = switch (item.category) {
+      DiagnosticHistoryCategory.validInstruction => (
+        const Color(0xFF2ECC71).withValues(alpha: 0.18),
+        const Color(0xFF2ECC71),
+      ),
+      DiagnosticHistoryCategory.ignoredNotification => (
+        Colors.grey.withValues(alpha: 0.2),
+        const Color(0xFFB0BEC5),
+      ),
+      DiagnosticHistoryCategory.emptyNotification => (
+        Colors.orange.withValues(alpha: 0.18),
+        const Color(0xFFFFB74D),
+      ),
+      DiagnosticHistoryCategory.duplicateInstruction => (
+        Colors.blueGrey.withValues(alpha: 0.2),
+        const Color(0xFF90A4AE),
+      ),
+      DiagnosticHistoryCategory.sourceSwitched => (
+        Colors.purple.withValues(alpha: 0.2),
+        const Color(0xFFCE93D8),
+      ),
+      DiagnosticHistoryCategory.navigationEnded => (
+        Colors.red.withValues(alpha: 0.18),
+        const Color(0xFFEF5350),
+      ),
+      DiagnosticHistoryCategory.sourceRecovered => (
+        AppColors.cyanLuminous.withValues(alpha: 0.2),
+        AppColors.cyanLuminous,
+      ),
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceNavy,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.cardNavy),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _getManeuverIconData(inst.maneuverType),
+            color: _getStatusColor(inst.status),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badgeBg,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        item.category.label,
+                        style: TextStyle(
+                          color: badgeFg,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        inst.rawText.isNotEmpty
+                            ? inst.rawText
+                            : (inst.isEmptyNotification
+                                  ? '(Notificación sin texto extraíble)'
+                                  : inst.maneuverType.name),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.coldWhite,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${inst.source.displayName} • ${inst.receivedAt.toIso8601String().substring(11, 19)}${item.detail != null ? " • ${item.detail}" : ""}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 9.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (inst.distanceMeters != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              '${inst.distanceMeters}m',
+              style: const TextStyle(
+                color: AppColors.cyanLuminous,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -721,7 +1046,9 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
                 Text(
                   inst.rawText.isNotEmpty
                       ? inst.rawText
-                      : inst.maneuverType.name,
+                      : (inst.isEmptyNotification
+                            ? '(Notificación sin texto extraíble)'
+                            : inst.maneuverType.name),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -874,6 +1201,9 @@ class _BridgeDiagnosticScreenState extends State<BridgeDiagnosticScreen>
       case ManeuverType.depart:
         return 'Inicia la ruta';
       case ManeuverType.unknown:
+        if (inst.isEmptyNotification) {
+          return 'Notificación sin texto extraíble';
+        }
         if (inst.isIncomplete) {
           return 'Maniobra no identificada';
         }

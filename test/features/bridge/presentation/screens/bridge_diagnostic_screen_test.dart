@@ -82,8 +82,9 @@ void main() {
 
         await tester.pumpAndSettle();
 
-        // La tarjeta de última instrucción debe actualizarse
-        expect(find.text('Google Maps'), findsOneWidget);
+        // La tarjeta de última instrucción debe actualizarse y el modo AUTO debe reflejar Google Maps
+        expect(find.text('MODO DE FUENTE: AUTO'), findsOneWidget);
+        expect(find.text('Google Maps'), findsWidgets);
         expect(find.text('Gira a la derecha'), findsWidgets);
         expect(find.text('400 m'), findsOneWidget);
         expect(find.text('Vía: Carrera 7'), findsOneWidget);
@@ -105,7 +106,7 @@ void main() {
       });
 
       await tester.pumpAndSettle();
-      expect(find.text('Waze'), findsOneWidget);
+      expect(find.text('Waze'), findsWidgets);
 
       // Tocar botón de limpiar sesión
       await tester.tap(find.byIcon(Icons.delete_outline));

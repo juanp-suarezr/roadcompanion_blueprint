@@ -106,6 +106,12 @@ class NavigationInstructionBridge {
   Future<void> _processIncomingInstruction(
     BridgeNavigationInstruction instruction,
   ) async {
+    final eventId =
+        '${instruction.notificationKey ?? instruction.source.packageName}@${instruction.receivedAt.millisecondsSinceEpoch}';
+    final srcLabel = instruction.source.packageName.isNotEmpty
+        ? instruction.source.packageName
+        : instruction.source.displayName;
+
     // Regla 3 de la máquina de estados: si la notificación se elimina o caduca,
     // cancelar la instrucción activa en el servicio BLE para no repetir maniobras obsoletas.
     if (instruction.status == BridgeInstructionStatus.stale) {
@@ -144,9 +150,27 @@ class NavigationInstructionBridge {
       return;
     }
 
+    NavigationDiagnosticLogger.logCorrelatedEvent(
+      step: CorrelatedBridgeTraceStep.instructionMapped,
+      eventId: eventId,
+      source: srcLabel,
+      availableContent: adaptation.description,
+      result: 'hex=${adaptation.hexString ?? "n/a"}',
+      timestamp: instruction.receivedAt,
+    );
+
     // Verificar si el Tripper Pod está en un estado BLE apto para recibir paquetes
     final isReady = _bleService.currentState.isReadyForNavigation;
     if (!isReady) {
+      NavigationDiagnosticLogger.logCorrelatedEvent(
+        step: CorrelatedBridgeTraceStep.bleWriteFailed,
+        eventId: eventId,
+        source: srcLabel,
+        availableContent: 'hex=${adaptation.hexString ?? "n/a"}',
+        result: 'ble_not_ready',
+        rejectionReason:
+            'Tripper Pod no está en estado autenticado/listo (${_bleService.currentState.name})',
+      );
       final event = NavigationBridgeEvent(
         instruction: instruction,
         adaptationResult: adaptation,
@@ -161,7 +185,32 @@ class NavigationInstructionBridge {
     }
 
     try {
+      NavigationDiagnosticLogger.logCorrelatedEvent(
+        step: CorrelatedBridgeTraceStep.bleWriteStarted,
+        eventId: eventId,
+        source: srcLabel,
+        availableContent: 'hex=${adaptation.hexString ?? "n/a"}',
+        result: 'writing_20_bytes',
+      );
       final txSuccess = await _bleService.sendRawPacket(adaptation.packet!);
+      if (txSuccess) {
+        NavigationDiagnosticLogger.logCorrelatedEvent(
+          step: CorrelatedBridgeTraceStep.bleWriteCompleted,
+          eventId: eventId,
+          source: srcLabel,
+          availableContent: 'hex=${adaptation.hexString ?? "n/a"}',
+          result: 'txSuccess=true',
+        );
+      } else {
+        NavigationDiagnosticLogger.logCorrelatedEvent(
+          step: CorrelatedBridgeTraceStep.bleWriteFailed,
+          eventId: eventId,
+          source: srcLabel,
+          availableContent: 'hex=${adaptation.hexString ?? "n/a"}',
+          result: 'txSuccess=false',
+          rejectionReason: 'Fallo en escritura GATT nativa',
+        );
+      }
       NavigationDiagnosticLogger.logPipeline(
         stage: DiagnosticPipelineStage.l4BleTx,
         source: instruction.source.displayName,
@@ -187,6 +236,14 @@ class NavigationInstructionBridge {
         _eventsController.add(event);
       }
     } catch (e) {
+      NavigationDiagnosticLogger.logCorrelatedEvent(
+        step: CorrelatedBridgeTraceStep.bleWriteFailed,
+        eventId: eventId,
+        source: srcLabel,
+        availableContent: 'hex=${adaptation.hexString ?? "n/a"}',
+        result: 'exception',
+        rejectionReason: e.toString(),
+      );
       final event = NavigationBridgeEvent(
         instruction: instruction,
         adaptationResult: adaptation,

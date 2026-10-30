@@ -6,14 +6,8 @@ import '../entities/bridge_source_type.dart';
 /// Analizador sintáctico independiente y determinista para instrucciones
 /// de navegación provenientes de fuentes externas en ESTELA Bridge.
 ///
-/// Transforma textos no estructurados (por ejemplo títulos y cuerpos de
+/// Transforma textos no estructurados (por ejemplo títulos, cuerpos y RemoteViews de
 /// notificaciones interceptadas) en modelos inmutables [BridgeNavigationInstruction].
-///
-/// NOTA DE INGENIERÍA Y ADVERTENCIA DE VIABILIDAD:
-/// Este parser implementa patrones sintácticos de referencia iniciales.
-/// No debe asumirse que representa con exactitud la totalidad de cadenas
-/// emitidas por distintas versiones de Google Maps y Waze hasta recopilar
-/// y auditar volcados de telemetría auténticos en el Samsung Galaxy A35.
 class NavigationInstructionParser {
   const NavigationInstructionParser();
 
@@ -24,7 +18,7 @@ class NavigationInstructionParser {
   );
 
   static final RegExp _meterRegex = RegExp(
-    r'(?:en\s+)?(\d+)\s*(?:m|metros?)\b',
+    r'(?:en\s+)?(\d+)\s*(?:m|mts?|metros?)\b',
     caseSensitive: false,
   );
 
@@ -44,11 +38,28 @@ class NavigationInstructionParser {
     caseSensitive: false,
   );
 
-  // Expresión para extracción heurística de calle o vía de destino.
+  // Expresión para extracción heurística de calle o vía de destino (incluyendo nomenclatura vial de Colombia).
   static final RegExp _streetConnectorRegex = RegExp(
-    r'(?:hacia|en|por|onto|towards?|on)\s+([A-Za-z0-9áéíóúÁÉÍÓÚñÑ#°.\-\s]{3,40})',
+    r'(?:hacia|en|por|onto|towards?|on)\s+([A-Za-z0-9áéíóúÁÉÍÓÚñÑ#°ªº/.\-\s]{3,45})',
     caseSensitive: false,
   );
+
+  static const Set<String> _irrelevantRemoteLabels = {
+    'waze',
+    'google maps',
+    'maps',
+    'cerrar',
+    'salir',
+    'detener',
+    'cancelar',
+    'apagar',
+    'silenciar',
+    'stop',
+    'exit',
+    'dismiss',
+    'close',
+    'mute',
+  };
 
   /// Procesa los textos disponibles de una notificación o mensaje externo
   /// y construye una [BridgeNavigationInstruction] rigurosamente clasificada.
@@ -60,12 +71,37 @@ class NavigationInstructionParser {
     DateTime? receivedAt,
     List<String> availableExtras = const [],
     List<String> remoteViewsTexts = const [],
+    String? notificationKey,
+    String? notificationCategory,
   }) {
     final effectiveReceivedAt = receivedAt ?? DateTime.now();
 
-    final title = (rawTitle ?? '').trim();
-    final body = (rawText ?? '').trim();
+    var title = (rawTitle ?? '').trim();
+    var body = (rawText ?? '').trim();
     final sub = (rawSubText ?? '').trim();
+
+    // Si los campos estándar vienen vacíos o solo contienen el nombre de la app,
+    // aprovechar los fragmentos útiles extraídos de RemoteViews.
+    final usefulRemoteTexts = remoteViewsTexts
+        .map((t) => t.trim())
+        .where(
+          (t) =>
+              t.isNotEmpty &&
+              !_irrelevantRemoteLabels.contains(t.toLowerCase()),
+        )
+        .toList(growable: false);
+
+    if (usefulRemoteTexts.isNotEmpty) {
+      if (title.isEmpty ||
+          _irrelevantRemoteLabels.contains(title.toLowerCase())) {
+        title = usefulRemoteTexts.first;
+      }
+      if (body.isEmpty || _isAppRunningOnlyBanner(body.toLowerCase())) {
+        body = usefulRemoteTexts.length > 1
+            ? usefulRemoteTexts.sublist(1).join(' — ')
+            : (title != usefulRemoteTexts.first ? usefulRemoteTexts.first : '');
+      }
+    }
 
     final combinedText = [
       title,
@@ -81,7 +117,11 @@ class NavigationInstructionParser {
         rawTitle: rawTitle,
         receivedAt: effectiveReceivedAt,
         status: BridgeInstructionStatus.unrecognized,
-        discardReason: 'Notificación vacía sin texto útil',
+        isEmptyNotification: true,
+        notificationKey: notificationKey,
+        notificationCategory: notificationCategory,
+        discardReason:
+            'Notificación recibida sin texto extraíble (notification_text_empty)',
         availableExtras: availableExtras,
         remoteViewsTexts: remoteViewsTexts,
       );
@@ -100,6 +140,9 @@ class NavigationInstructionParser {
         receivedAt: effectiveReceivedAt,
         status: BridgeInstructionStatus.unrecognized,
         isAppRunningNotification: true,
+        isEmptyNotification: false,
+        notificationKey: notificationKey,
+        notificationCategory: notificationCategory,
         discardReason:
             'Notificación de aplicación activa en segundo plano (sin maniobra de ruta)',
         availableExtras: availableExtras,
@@ -107,11 +150,20 @@ class NavigationInstructionParser {
       );
     }
 
-    // 1. Extraer distancia únicamente en título y cuerpo principal (evitando falsos números en subText de tráfico).
-    final distanceResult = _extractDistance(title, body, sub);
+    // 1. Extraer distancia únicamente en título, cuerpo, subText o RemoteViews.
+    final distanceResult = _extractDistance(
+      title,
+      body,
+      sub,
+      usefulRemoteTexts,
+    );
 
     // 2. Extraer maniobra giro a giro real y salida de rotonda (evaluando título/cuerpo antes que avisos secundarios).
-    final primaryText = [title, body].where((p) => p.isNotEmpty).join(' — ');
+    final primaryText = [
+      title,
+      body,
+      ...usefulRemoteTexts,
+    ].where((p) => p.isNotEmpty).join(' — ');
     final (maneuverType, exitNumber) = _detectManeuver(
       primaryText.isNotEmpty ? primaryText : combinedText,
     );
@@ -127,7 +179,7 @@ class NavigationInstructionParser {
         (maneuverType == ManeuverType.unknown ||
             _isNonManeuverStatus(lowerCombined))
         ? null
-        : _extractStreet(title, body);
+        : _extractStreet(title, body, usefulRemoteTexts);
 
     // Si la maniobra es llegada a destino y no incluye cifra explícita en metros, usar 0 m.
     final effectiveDistanceMeters = nonManeuverReason != null
@@ -172,6 +224,9 @@ class NavigationInstructionParser {
       receivedAt: effectiveReceivedAt,
       status: status,
       isAppRunningNotification: false,
+      isEmptyNotification: false,
+      notificationKey: notificationKey,
+      notificationCategory: notificationCategory,
       discardReason: discardReason,
       availableExtras: availableExtras,
       remoteViewsTexts: remoteViewsTexts,
@@ -186,6 +241,8 @@ class NavigationInstructionParser {
     DateTime? receivedAt,
     List<String> availableExtras = const [],
     List<String> remoteViewsTexts = const [],
+    String? notificationKey,
+    String? notificationCategory,
   }) {
     return parse(
       rawTitle: rawTitle,
@@ -195,6 +252,8 @@ class NavigationInstructionParser {
       receivedAt: receivedAt,
       availableExtras: availableExtras,
       remoteViewsTexts: remoteViewsTexts,
+      notificationKey: notificationKey,
+      notificationCategory: notificationCategory,
     );
   }
 
@@ -206,6 +265,8 @@ class NavigationInstructionParser {
     DateTime? receivedAt,
     List<String> availableExtras = const [],
     List<String> remoteViewsTexts = const [],
+    String? notificationKey,
+    String? notificationCategory,
   }) {
     return parse(
       rawTitle: rawTitle,
@@ -215,14 +276,26 @@ class NavigationInstructionParser {
       receivedAt: receivedAt,
       availableExtras: availableExtras,
       remoteViewsTexts: remoteViewsTexts,
+      notificationKey: notificationKey,
+      notificationCategory: notificationCategory,
     );
   }
 
   /// Extrae la distancia en metros a partir de patrones estándar en español e inglés.
   /// No infiere ni inventa distancias si no existe concordancia explícita.
-  _DistanceResult? _extractDistance(String title, String body, String sub) {
+  _DistanceResult? _extractDistance(
+    String title,
+    String body,
+    String sub, [
+    List<String> remoteTexts = const [],
+  ]) {
     // Buscar prioritariamente en el título o cuerpo donde suele venir la maniobra inmediata.
-    final candidateTexts = [title, body, sub].where((t) => t.isNotEmpty);
+    final candidateTexts = [
+      title,
+      body,
+      ...remoteTexts,
+      sub,
+    ].where((t) => t.isNotEmpty);
 
     for (final text in candidateTexts) {
       // Kilómetros (ej. "1,2 km", "1.2 km", "en 500 km")
@@ -238,7 +311,7 @@ class NavigationInstructionParser {
         }
       }
 
-      // Metros (ej. "400 m", "50 metros", "en 100 m")
+      // Metros (ej. "400 m", "50 metros", "en 100 m", "300 mts")
       final meterMatch = _meterRegex.firstMatch(text);
       if (meterMatch != null) {
         final value = int.tryParse(meterMatch.group(1)!);
@@ -335,10 +408,11 @@ class NavigationInstructionParser {
       return (ManeuverType.roundabout, exitNumber);
     }
 
-    // 4. Giros a la izquierda (con discriminación de ángulo)
+    // 4. Giros a la izquierda (con discriminación de ángulo y vocabulario Waze/Colombia)
     if (lower.contains('pronunciado a la izquierda') ||
         lower.contains('cerrado a la izquierda') ||
         lower.contains('brusco a la izquierda') ||
+        lower.contains('fuerte a la izquierda') ||
         lower.contains('sharp left')) {
       return (ManeuverType.sharpLeft, null);
     }
@@ -355,7 +429,9 @@ class NavigationInstructionParser {
         lower.contains('usa el carril izquierdo') ||
         lower.contains('use el carril izquierdo') ||
         lower.contains('sal a la izquierda') ||
+        lower.contains('sal por la izquierda') ||
         lower.contains('salga a la izquierda') ||
+        lower.contains('salida a la izquierda') ||
         lower.contains('toma la salida a la izquierda') ||
         lower.contains('tome la salida a la izquierda') ||
         lower.contains('slight left') ||
@@ -370,18 +446,26 @@ class NavigationInstructionParser {
         lower.contains('hacia la izquierda') ||
         lower.contains('dobla a la izquierda') ||
         lower.contains('doble a la izquierda') ||
+        lower.contains('voltea a la izquierda') ||
+        lower.contains('voltee a la izquierda') ||
         lower.contains('vira a la izquierda') ||
         lower.contains('vire a la izquierda') ||
+        lower.contains('toma a la izquierda') ||
+        lower.contains('tome a la izquierda') ||
         lower.contains('gira a la izq') ||
         lower.contains('gire a la izq') ||
+        lower.contains('izquierda en ') ||
+        lower.contains('izquierda hacia ') ||
+        lower.contains('izquierda por ') ||
         lower.contains('turn left')) {
       return (ManeuverType.left, null);
     }
 
-    // 5. Giros a la derecha (con discriminación de ángulo)
+    // 5. Giros a la derecha (con discriminación de ángulo y vocabulario Waze/Colombia)
     if (lower.contains('pronunciado a la derecha') ||
         lower.contains('cerrado a la derecha') ||
         lower.contains('brusco a la derecha') ||
+        lower.contains('fuerte a la derecha') ||
         lower.contains('sharp right')) {
       return (ManeuverType.sharpRight, null);
     }
@@ -398,7 +482,9 @@ class NavigationInstructionParser {
         lower.contains('usa el carril derecho') ||
         lower.contains('use el carril derecho') ||
         lower.contains('sal a la derecha') ||
+        lower.contains('sal por la derecha') ||
         lower.contains('salga a la derecha') ||
+        lower.contains('salida a la derecha') ||
         lower.contains('toma la salida a la derecha') ||
         lower.contains('tome la salida a la derecha') ||
         lower.contains('slight right') ||
@@ -413,10 +499,17 @@ class NavigationInstructionParser {
         lower.contains('hacia la derecha') ||
         lower.contains('dobla a la derecha') ||
         lower.contains('doble a la derecha') ||
+        lower.contains('voltea a la derecha') ||
+        lower.contains('voltee a la derecha') ||
         lower.contains('vira a la derecha') ||
         lower.contains('vire a la derecha') ||
+        lower.contains('toma a la derecha') ||
+        lower.contains('tome a la derecha') ||
         lower.contains('gira a la der') ||
         lower.contains('gire a la der') ||
+        lower.contains('derecha en ') ||
+        lower.contains('derecha hacia ') ||
+        lower.contains('derecha por ') ||
         lower.contains('turn right')) {
       return (ManeuverType.right, null);
     }
@@ -585,9 +678,13 @@ class NavigationInstructionParser {
   ];
 
   /// Extracción heurística del nombre de la vía de destino.
-  String? _extractStreet(String title, String body) {
-    // Comprobar en el cuerpo y en el título
-    for (final text in [body, title]) {
+  String? _extractStreet(
+    String title,
+    String body, [
+    List<String> remoteTexts = const [],
+  ]) {
+    // Comprobar en el cuerpo, en el título y en los fragmentos de RemoteViews
+    for (final text in [body, title, ...remoteTexts]) {
       if (_isNonManeuverStatus(text.toLowerCase())) continue;
       final matches = _streetConnectorRegex.allMatches(text);
       for (final match in matches) {

@@ -32,6 +32,80 @@ enum DiagnosticPipelineStage {
   const DiagnosticPipelineStage(this.tag, this.description);
 }
 
+/// Etapas de trazabilidad correlacionada por evento para auditoría de notificaciones y BLE.
+enum CorrelatedBridgeTraceStep {
+  notificationReceived('notification_received'),
+  notificationExtracted('notification_extracted'),
+  notificationTextEmpty('notification_text_empty'),
+  instructionParsed('instruction_parsed'),
+  instructionRejected('instruction_rejected'),
+  instructionAccepted('instruction_accepted'),
+  instructionMapped('instruction_mapped'),
+  bleWriteStarted('ble_write_started'),
+  bleWriteCompleted('ble_write_completed'),
+  bleWriteFailed('ble_write_failed'),
+  sourceCandidateDetected('source_candidate_detected'),
+  sourceInstructionAccepted('source_instruction_accepted'),
+  sourceActivated('source_activated'),
+  sourceSwitched('source_switched'),
+  sourceInstructionIgnored('source_instruction_ignored'),
+  sourceInstructionExpired('source_instruction_expired'),
+  sourceNavigationEnded('source_navigation_ended'),
+  sourceFallbackActivated('source_fallback_activated'),
+  sourceNoActiveNavigation('source_no_active_navigation');
+
+  final String code;
+  const CorrelatedBridgeTraceStep(this.code);
+}
+
+/// Registro individual correlacionado por evento (`eventId`).
+class CorrelatedTraceEntry {
+  final CorrelatedBridgeTraceStep step;
+  final String eventId;
+  final String source;
+  final DateTime timestamp;
+  final String availableContent;
+  final String result;
+  final String? rejectionReason;
+  final String? previousSource;
+  final String? newSource;
+  final String? maneuver;
+  final int? distanceMeters;
+  final String? transitionReason;
+
+  const CorrelatedTraceEntry({
+    required this.step,
+    required this.eventId,
+    required this.source,
+    required this.timestamp,
+    required this.availableContent,
+    required this.result,
+    this.rejectionReason,
+    this.previousSource,
+    this.newSource,
+    this.maneuver,
+    this.distanceMeters,
+    this.transitionReason,
+  });
+
+  String format() {
+    final ts = timestamp.toIso8601String().substring(11, 19);
+    final reasonPart = rejectionReason != null && rejectionReason!.isNotEmpty
+        ? ' | reason="$rejectionReason"'
+        : '';
+    final transPart = transitionReason != null && transitionReason!.isNotEmpty
+        ? ' | transition="$transitionReason"'
+        : '';
+    final switchPart = previousSource != null || newSource != null
+        ? ' | [${previousSource ?? "n/a"} -> ${newSource ?? "n/a"}]'
+        : '';
+    final maneuverPart = maneuver != null
+        ? ' | maneuver=$maneuver${distanceMeters != null ? "(${distanceMeters}m)" : ""}'
+        : '';
+    return '[$ts][${step.code}][id=$eventId][src=$source] content=($availableContent) -> result=$result$reasonPart$transPart$switchPart$maneuverPart';
+  }
+}
+
 /// Entrada estructurada e inmutable del registro de observabilidad en 5 niveles.
 class DiagnosticPipelineEntry {
   final DiagnosticPipelineStage stage;
@@ -62,7 +136,9 @@ class NavigationDiagnosticLogger {
 
   static bool isEnabled = true;
   static const int _maxPipelineEntries = 200;
+  static const int _maxCorrelatedEntries = 300;
   static final List<DiagnosticPipelineEntry> _pipelineEntries = [];
+  static final List<CorrelatedTraceEntry> _correlatedEntries = [];
 
   /// Devuelve las entradas registradas, opcionalmente filtradas por nivel.
   static List<DiagnosticPipelineEntry> getPipelineEntries({
@@ -76,9 +152,67 @@ class NavigationDiagnosticLogger {
     );
   }
 
+  /// Devuelve las entradas correlacionadas por evento, opcionalmente filtradas por `eventId` o `step`.
+  static List<CorrelatedTraceEntry> getCorrelatedEntries({
+    String? eventId,
+    CorrelatedBridgeTraceStep? step,
+  }) {
+    return List.unmodifiable(
+      _correlatedEntries.where((e) {
+        if (eventId != null && e.eventId != eventId) return false;
+        if (step != null && e.step != step) return false;
+        return true;
+      }),
+    );
+  }
+
   /// Limpia las entradas de observabilidad en memoria.
   static void clearPipelineEntries() {
     _pipelineEntries.clear();
+    _correlatedEntries.clear();
+  }
+
+  /// Registra un paso correlacionado de extremo a extremo para un evento de notificación/BLE.
+  static void logCorrelatedEvent({
+    required CorrelatedBridgeTraceStep step,
+    required String eventId,
+    required String source,
+    required String availableContent,
+    required String result,
+    String? rejectionReason,
+    String? previousSource,
+    String? newSource,
+    String? maneuver,
+    int? distanceMeters,
+    String? transitionReason,
+    DateTime? timestamp,
+  }) {
+    if (!isEnabled) return;
+    final sanitizedContent = availableContent.length > 160
+        ? '${availableContent.substring(0, 160)}…'
+        : availableContent;
+    final entry = CorrelatedTraceEntry(
+      step: step,
+      eventId: eventId,
+      source: source,
+      timestamp: timestamp ?? DateTime.now(),
+      availableContent: sanitizedContent,
+      result: result,
+      rejectionReason: rejectionReason,
+      previousSource: previousSource,
+      newSource: newSource,
+      maneuver: maneuver,
+      distanceMeters: distanceMeters,
+      transitionReason: transitionReason,
+    );
+    _correlatedEntries.insert(0, entry);
+    if (_correlatedEntries.length > _maxCorrelatedEntries) {
+      _correlatedEntries.removeRange(
+        _maxCorrelatedEntries,
+        _correlatedEntries.length,
+      );
+    }
+    debugPrint('[REstelar:Trace] ${entry.format()}');
   }
 
   /// Registra un evento en uno de los 5 niveles del pipeline de navegación/BLE,

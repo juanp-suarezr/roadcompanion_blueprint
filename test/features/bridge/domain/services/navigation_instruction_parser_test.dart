@@ -398,6 +398,73 @@ void main() {
           expect(gmapsRoundabout.isCompatibleWithTripper, isTrue);
         },
       );
+
+      test(
+        'extrae maniobra y distancia de Waze desde RemoteViews cuando EXTRA_TITLE es solo "Waze" y EXTRA_TEXT está vacío',
+        () {
+          final wazeFromRemoteViews = parser.parseWaze(
+            rawTitle: 'Waze',
+            rawText: '',
+            receivedAt: testDate,
+            notificationKey: '0|com.waze|1001|null|10234',
+            notificationCategory: 'navigation',
+            availableExtras: const ['android.title', 'bigContentView'],
+            remoteViewsTexts: const [
+              'Waze',
+              '300 m',
+              'Derecha en Av. 30 de Agosto',
+              'Cerrar',
+            ],
+          );
+
+          expect(wazeFromRemoteViews.maneuverType, equals(ManeuverType.right));
+          expect(wazeFromRemoteViews.distanceMeters, equals(300));
+          expect(
+            wazeFromRemoteViews.destinationStreet,
+            equals('Av. 30 de Agosto'),
+          );
+          expect(wazeFromRemoteViews.isCompatibleWithTripper, isTrue);
+          expect(wazeFromRemoteViews.isEmptyNotification, isFalse);
+          expect(
+            wazeFromRemoteViews.notificationKey,
+            equals('0|com.waze|1001|null|10234'),
+          );
+
+          final wazeSharpLeftCo = parser.parseWaze(
+            rawTitle: '150 mts',
+            rawText: 'Fuerte a la izquierda hacia Cra. 7',
+            receivedAt: testDate,
+          );
+          expect(wazeSharpLeftCo.maneuverType, equals(ManeuverType.sharpLeft));
+          expect(wazeSharpLeftCo.distanceMeters, equals(150));
+          expect(wazeSharpLeftCo.destinationStreet, equals('Cra. 7'));
+          expect(wazeSharpLeftCo.isCompatibleWithTripper, isTrue);
+        },
+      );
+
+      test(
+        'diferencia notificación activa sin texto extraíble (isEmptyNotification=true, status=unrecognized) de evento STALE',
+        () {
+          final emptyNotif = parser.parseWaze(
+            rawTitle: '',
+            rawText: null,
+            receivedAt: testDate,
+            notificationKey: '0|com.waze|99|null|10234',
+            notificationCategory: 'service',
+            availableExtras: const ['contentView'],
+            remoteViewsTexts: const ['Waze', 'Cerrar'],
+          );
+
+          expect(emptyNotif.isEmptyNotification, isTrue);
+          expect(
+            emptyNotif.status,
+            equals(BridgeInstructionStatus.unrecognized),
+          );
+          expect(emptyNotif.isStale, isFalse);
+          expect(emptyNotif.maneuverType, equals(ManeuverType.unknown));
+          expect(emptyNotif.discardReason, contains('notification_text_empty'));
+        },
+      );
     });
   });
 }

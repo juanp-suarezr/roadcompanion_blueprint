@@ -11,6 +11,12 @@ class BridgeNotificationEvent {
   final String? title;
   final String? text;
   final String? subText;
+  final String? bigText;
+  final int? notificationId;
+  final String? notificationKey;
+  final String? notificationCategory;
+  final bool isOngoing;
+  final bool isEmptyText;
   final List<String> availableExtras;
   final List<String> remoteViewsTexts;
   final DateTime timestamp;
@@ -22,10 +28,26 @@ class BridgeNotificationEvent {
     this.title,
     this.text,
     this.subText,
+    this.bigText,
+    this.notificationId,
+    this.notificationKey,
+    this.notificationCategory,
+    this.isOngoing = false,
+    this.isEmptyText = false,
     this.availableExtras = const [],
     this.remoteViewsTexts = const [],
     this.isRemoved = false,
   });
+
+  /// Identificador correlacionado determinista para trazabilidad de extremo a extremo.
+  String get correlationId {
+    final keyPart =
+        notificationKey ??
+        (notificationId != null
+            ? '${source.packageName}:$notificationId'
+            : source.packageName);
+    return '$keyPart@${timestamp.millisecondsSinceEpoch}';
+  }
 
   /// Construye un evento a partir del mapa de datos serializado por Kotlin.
   factory BridgeNotificationEvent.fromMap(Map<dynamic, dynamic> map) {
@@ -46,11 +68,32 @@ class BridgeNotificationEvent {
         ? rawRemote.map((e) => e.toString()).toList(growable: false)
         : const <String>[];
 
+    final rawNotifId = map['notificationId'];
+    final notificationId = rawNotifId is num ? rawNotifId.toInt() : null;
+
+    final title = map['title'] as String?;
+    final text = map['text'] as String?;
+    final subText = map['subText'] as String?;
+    final bigText = map['bigText'] as String?;
+    final explicitEmpty = map['isEmptyText'] as bool?;
+    final isEmptyText =
+        explicitEmpty ??
+        ((title == null || title.trim().isEmpty) &&
+            (text == null || text.trim().isEmpty) &&
+            (subText == null || subText.trim().isEmpty) &&
+            remoteViewsTexts.isEmpty);
+
     return BridgeNotificationEvent(
       source: source,
-      title: map['title'] as String?,
-      text: map['text'] as String?,
-      subText: map['subText'] as String?,
+      title: title,
+      text: text,
+      subText: subText,
+      bigText: bigText,
+      notificationId: notificationId,
+      notificationKey: map['notificationKey'] as String?,
+      notificationCategory: map['notificationCategory'] as String?,
+      isOngoing: map['isOngoing'] as bool? ?? false,
+      isEmptyText: isEmptyText,
       availableExtras: availableExtras,
       remoteViewsTexts: remoteViewsTexts,
       timestamp: timestamp,
@@ -60,7 +103,7 @@ class BridgeNotificationEvent {
 
   @override
   String toString() =>
-      'BridgeNotificationEvent(source: ${source.displayName}, title: "$title", isRemoved: $isRemoved)';
+      'BridgeNotificationEvent(source: ${source.displayName}, key: "$notificationKey", title: "$title", isRemoved: $isRemoved)';
 }
 
 /// Adaptador del canal nativo entre Flutter y Android para ESTELA Bridge.
@@ -118,6 +161,13 @@ class BridgeNativeChannel {
   Future<void> clearNativeCache() async {
     try {
       await _controlChannel.invokeMethod<bool>('clearCache');
+    } catch (_) {}
+  }
+
+  /// Solicita al servicio nativo inspeccionar inmediatamente las notificaciones activas en la barra de estado.
+  Future<void> syncActiveNotifications() async {
+    try {
+      await _controlChannel.invokeMethod<bool>('syncActiveNotifications');
     } catch (_) {}
   }
 

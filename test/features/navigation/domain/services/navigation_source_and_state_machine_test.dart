@@ -6,6 +6,7 @@ import 'package:road_companion/features/bridge/domain/entities/bridge_instructio
 import 'package:road_companion/features/bridge/domain/entities/bridge_source_type.dart';
 import 'package:road_companion/features/bridge/infrastructure/services/bridge_native_channel.dart';
 import 'package:road_companion/features/bridge/infrastructure/services/bridge_navigation_source.dart';
+import 'package:road_companion/features/bridge/presentation/state/bridge_diagnostic_controller.dart';
 import 'package:road_companion/features/navigation/domain/entities/road_curvature.dart';
 import 'package:road_companion/features/navigation/domain/entities/tripper_connection_state.dart';
 import 'package:road_companion/features/navigation/domain/entities/tripper_device.dart';
@@ -635,6 +636,173 @@ void main() {
 
           bridge.dispose();
           bridgeSource.dispose();
+        },
+      );
+
+      test(
+        '10. Diagnóstico 05:59:30 (Waze): descarta isRemoved huérfano sin crear falso STALE "(Sin texto disponible)", preserva rawText al retirar instrucción real y registra trazabilidad correlacionada completa',
+        () async {
+          NavigationDiagnosticLogger.clearPipelineEntries();
+
+          final bridgeSource = BridgeNavigationSource(
+            allowedSource: BridgeSourceType.waze,
+          );
+          final bridge = NavigationInstructionBridge(
+            navigationSource: bridgeSource,
+            bleService: mockBle,
+          );
+          bridge.start();
+
+          final t0 = DateTime(2026, 10, 30, 5, 59, 30);
+
+          // Caso A: Llega un onNotificationRemoved huérfano (sin notificación previa en la sesión).
+          // NO debe inventar una instrucción STALE con rawText vacío ("(Sin texto disponible)").
+          bridgeSource.processNotificationEvent(
+            BridgeNotificationEvent(
+              source: BridgeSourceType.waze,
+              notificationKey: '0|com.waze|100|null|10234',
+              timestamp: t0,
+              isRemoved: true,
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          expect(bridgeSource.lastInstruction, isNull);
+
+          // Caso B: Llega una notificación activa de Waze sin texto extraíble (notification_text_empty).
+          // Se clasifica como unrecognized con isEmptyNotification=true (NUNCA como STALE).
+          bridgeSource.processNotificationEvent(
+            BridgeNotificationEvent(
+              source: BridgeSourceType.waze,
+              notificationKey: '0|com.waze|101|null|10234',
+              notificationCategory: 'service',
+              isEmptyText: true,
+              availableExtras: const ['contentView'],
+              timestamp: t0.add(const Duration(seconds: 2)),
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          expect(bridgeSource.lastInstruction, isNotNull);
+          expect(bridgeSource.lastInstruction!.isEmptyNotification, isTrue);
+          expect(
+            bridgeSource.lastInstruction!.status,
+            equals(BridgeInstructionStatus.unrecognized),
+          );
+          expect(bridgeSource.lastInstruction!.isStale, isFalse);
+
+          // Verificar que se registró notification_text_empty en la traza correlacionada
+          final emptyTraces = NavigationDiagnosticLogger.getCorrelatedEntries(
+            step: CorrelatedBridgeTraceStep.notificationTextEmpty,
+          );
+          expect(emptyTraces, isNotEmpty);
+
+          // Caso C: Llega una instrucción real de Waze vía RemoteViews y se transmite por BLE.
+          bridgeSource.processNotificationEvent(
+            BridgeNotificationEvent(
+              source: BridgeSourceType.waze,
+              title: 'Waze',
+              text: '',
+              notificationKey: '0|com.waze|102|null|10234',
+              notificationCategory: 'navigation',
+              availableExtras: const ['android.title', 'bigContentView'],
+              remoteViewsTexts: const [
+                'Waze',
+                '300 m',
+                'Derecha en Av. 30 de Agosto',
+              ],
+              timestamp: t0.add(const Duration(seconds: 5)),
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          expect(bridgeSource.lastInstruction!.isCompatibleWithTripper, isTrue);
+          expect(
+            bridgeSource.lastInstruction!.maneuverType,
+            equals(ManeuverType.right),
+          );
+          expect(bridgeSource.lastInstruction!.distanceMeters, equals(300));
+          expect(mockBle.sentRawPackets.length, equals(1));
+
+          // Verificar pasos correlacionados completos para el evento válido
+          final allSteps = NavigationDiagnosticLogger.getCorrelatedEntries()
+              .map((e) => e.step)
+              .toSet();
+          expect(
+            allSteps,
+            containsAll([
+              CorrelatedBridgeTraceStep.notificationReceived,
+              CorrelatedBridgeTraceStep.notificationExtracted,
+              CorrelatedBridgeTraceStep.instructionParsed,
+              CorrelatedBridgeTraceStep.instructionAccepted,
+              CorrelatedBridgeTraceStep.instructionMapped,
+              CorrelatedBridgeTraceStep.bleWriteStarted,
+              CorrelatedBridgeTraceStep.bleWriteCompleted,
+            ]),
+          );
+
+          // Caso D: Al retirarse esa notificación real, pasa a STALE pero CONSERVA su rawText original.
+          bridgeSource.processNotificationEvent(
+            BridgeNotificationEvent(
+              source: BridgeSourceType.waze,
+              notificationKey: '0|com.waze|102|null|10234',
+              timestamp: t0.add(const Duration(seconds: 10)),
+              isRemoved: true,
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          expect(bridgeSource.lastInstruction!.isStale, isTrue);
+          expect(
+            bridgeSource.lastInstruction!.rawText,
+            contains('Derecha en Av. 30 de Agosto'),
+          );
+
+          bridge.dispose();
+          bridgeSource.dispose();
+        },
+      );
+
+      test(
+        '11. BridgeDiagnosticController: separa Fuente seleccionada, Fuente activa del viaje, Última fuente con evento y Estado de navegación sin quedar bloqueado en Navegación finalizada',
+        () async {
+          final controller = BridgeDiagnosticController(
+            bleService: mockBle,
+            initialSource: SelectedNavigationSourceType.internal,
+            strictSourceFilter: true,
+          );
+
+          expect(
+            controller.selectedSource,
+            equals(SelectedNavigationSourceType.internal),
+          );
+          expect(
+            controller.activeTripSource,
+            equals(SelectedNavigationSourceType.internal),
+          );
+          expect(controller.lastEventSource, isNull);
+          expect(controller.activeFilterLabel, contains('Interno'));
+
+          // Al cambiar a Waze con filtro estricto, tanto selectedSource como activeTripSource pasan a Waze
+          await controller.selectNavigationSource(
+            SelectedNavigationSourceType.waze,
+            strictFilter: true,
+          );
+          expect(
+            controller.selectedSource,
+            equals(SelectedNavigationSourceType.waze),
+          );
+          expect(
+            controller.activeTripSource,
+            equals(SelectedNavigationSourceType.waze),
+          );
+          expect(controller.activeFilterLabel, equals('Waze (com.waze)'));
+
+          // Si se limpia la sesión tras finalizar un viaje y se vuelve a seleccionar Waze,
+          // no permanece bloqueado en navigationStopped.
+          await controller.clearSession();
+          expect(
+            controller.companionState,
+            isNot(equals(CompanionNavigationState.navigationStopped)),
+          );
+
+          controller.dispose();
         },
       );
     },

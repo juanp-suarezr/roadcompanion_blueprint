@@ -28,6 +28,11 @@ class MainActivity : FlutterActivity() {
                     val pkg = call.argument<String>("packageName")
                     NavigationNotificationListenerService.selectedSourcePackage = pkg
                     NavigationNotificationListenerService.clearCache()
+                    NavigationNotificationListenerService.syncActiveNotificationsForCurrentSelection()
+                    result.success(true)
+                }
+                "syncActiveNotifications" -> {
+                    NavigationNotificationListenerService.syncActiveNotificationsForCurrentSelection()
                     result.success(true)
                 }
                 "getSelectedSourcePackage" -> {
@@ -88,6 +93,7 @@ class MainActivity : FlutterActivity() {
                             events?.success(payload)
                         }
                     }
+                    NavigationNotificationListenerService.syncActiveNotificationsForCurrentSelection()
                 }
 
                 override fun onCancel(arguments: Any?) {

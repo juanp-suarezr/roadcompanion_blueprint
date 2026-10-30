@@ -23,6 +23,7 @@ export 'features/navigation/domain/repositories/gpx_route_repository.dart';
 export 'features/navigation/domain/repositories/session_repository.dart';
 export 'features/navigation/domain/services/geocoding_service.dart';
 export 'features/navigation/domain/services/location_service.dart';
+export 'features/navigation/domain/services/auto_navigation_source_arbiter.dart';
 export 'features/navigation/domain/services/navigation_diagnostic_logger.dart';
 export 'features/navigation/domain/services/navigation_source.dart';
 export 'features/navigation/domain/services/osm_poi_service.dart';

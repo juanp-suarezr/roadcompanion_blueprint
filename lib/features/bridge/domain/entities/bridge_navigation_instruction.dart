@@ -46,6 +46,15 @@ class BridgeNavigationInstruction {
   /// (ej. "Waze — En ejecución. Toca para abrir.") y no a una instrucción de ruta.
   final bool isAppRunningNotification;
 
+  /// Indica si la notificación fue recibida activa desde Android pero sin ningún texto extraíble.
+  final bool isEmptyNotification;
+
+  /// Clave identificadora de la notificación en Android (`StatusBarNotification.key`).
+  final String? notificationKey;
+
+  /// Categoría reportada por la notificación en Android (ej. `navigation`, `service`, `none`).
+  final String? notificationCategory;
+
   /// Motivo técnico explícito si la notificación fue descartada para transmisión BLE.
   final String? discardReason;
 
@@ -67,6 +76,9 @@ class BridgeNavigationInstruction {
     this.destinationStreet,
     this.roundaboutExit,
     this.isAppRunningNotification = false,
+    this.isEmptyNotification = false,
+    this.notificationKey,
+    this.notificationCategory,
     this.discardReason,
     this.availableExtras = const [],
     this.remoteViewsTexts = const [],
@@ -100,8 +112,11 @@ class BridgeNavigationInstruction {
   }
 
   /// Retorna una nueva instancia marcada con el estado [BridgeInstructionStatus.stale].
-  BridgeNavigationInstruction asStale() {
-    return copyWith(status: BridgeInstructionStatus.stale);
+  BridgeNavigationInstruction asStale({String? discardReason}) {
+    return copyWith(
+      status: BridgeInstructionStatus.stale,
+      discardReason: discardReason ?? this.discardReason,
+    );
   }
 
   /// Crea una copia inmutable permitiendo actualizar atributos seleccionados.
@@ -117,6 +132,9 @@ class BridgeNavigationInstruction {
     DateTime? receivedAt,
     BridgeInstructionStatus? status,
     bool? isAppRunningNotification,
+    bool? isEmptyNotification,
+    Object? notificationKey = _sentinel,
+    Object? notificationCategory = _sentinel,
     Object? discardReason = _sentinel,
     List<String>? availableExtras,
     List<String>? remoteViewsTexts,
@@ -144,6 +162,13 @@ class BridgeNavigationInstruction {
       status: status ?? this.status,
       isAppRunningNotification:
           isAppRunningNotification ?? this.isAppRunningNotification,
+      isEmptyNotification: isEmptyNotification ?? this.isEmptyNotification,
+      notificationKey: identical(notificationKey, _sentinel)
+          ? this.notificationKey
+          : notificationKey as String?,
+      notificationCategory: identical(notificationCategory, _sentinel)
+          ? this.notificationCategory
+          : notificationCategory as String?,
       discardReason: identical(discardReason, _sentinel)
           ? this.discardReason
           : discardReason as String?,

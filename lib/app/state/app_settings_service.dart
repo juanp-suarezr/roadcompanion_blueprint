@@ -86,10 +86,10 @@ class AppSettingsService {
     await _prefs?.setString(_keyMotorcycleCustomName, customName);
   }
 
-  /// Carga la fuente de navegación seleccionada para el viaje (por defecto: Waze).
+  /// Carga la fuente de navegación seleccionada para el viaje (por defecto: AUTO).
   SelectedNavigationSourceType loadSelectedNavigationSource() {
     final raw = _prefs?.getString(_keySelectedNavigationSource);
-    if (raw == null) return SelectedNavigationSourceType.waze;
+    if (raw == null) return SelectedNavigationSourceType.auto;
     return SelectedNavigationSourceType.fromStorageKey(raw);
   }
 
