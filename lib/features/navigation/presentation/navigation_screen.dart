@@ -167,6 +167,7 @@ class NavigationScreenState extends State<NavigationScreen> {
   DateTime? _lastRecalculationAttempt;
   bool _followRiderOnMap = true;
   int? _lastBleStepIndex;
+  ManeuverType? _lastBleManeuverType;
   int? _lastBleDistanceMeters;
   DateTime? _lastBleSentAt;
 
@@ -374,6 +375,7 @@ class NavigationScreenState extends State<NavigationScreen> {
       _maneuverEngine.clear();
       _maneuverEngine.setRoute(versionedRoutes.first);
       _lastBleStepIndex = null;
+      _lastBleManeuverType = null;
       _lastBleDistanceMeters = null;
 
       setState(() {
@@ -413,10 +415,19 @@ class NavigationScreenState extends State<NavigationScreen> {
     final updatedAlternative = _availableRoutes[index].copyWith(
       routeVersion: _activeRouteVersion,
     );
+    _maneuverEngine.clear();
+    _maneuverEngine.setRoute(updatedAlternative);
     setState(() {
       _selectedRouteIndex = index;
       _calculatedRoute = updatedAlternative;
-      _currentCurvatureInfo = null;
+      _currentCurvatureInfo = RoadCurvatureEstimator.estimate(
+        geometry: updatedAlternative.geometry,
+        traveledDistanceMeters: 0.0,
+        lookaheadMeters: 120.0,
+        maneuvers: updatedAlternative.routePlan.maneuvers,
+        geometrySource: GeometrySource.internalRouteOsrm,
+        routeVersion: _activeRouteVersion,
+      );
     });
     // Ajustar encuadre al cambiar de ruta seleccionada
     _fitMapToCoordinates(updatedAlternative.geometry);
@@ -720,6 +731,8 @@ class NavigationScreenState extends State<NavigationScreen> {
             final distRounded = effectiveStep.distanceToManeuverMeters.round();
             final stepChanged =
                 _lastBleStepIndex != effectiveStep.maneuverIndex;
+            final typeChanged =
+                _lastBleManeuverType != effectiveStep.activeManeuver.type;
             final distanceDeltaEnough =
                 _lastBleDistanceMeters == null ||
                 (_lastBleDistanceMeters! - distRounded).abs() >= 10;
@@ -728,8 +741,11 @@ class NavigationScreenState extends State<NavigationScreen> {
                 now.difference(_lastBleSentAt!) >=
                     const Duration(milliseconds: 1500);
 
-            if (stepChanged || (distanceDeltaEnough && cadenceElapsed)) {
+            if (stepChanged ||
+                typeChanged ||
+                (distanceDeltaEnough && cadenceElapsed)) {
               _lastBleStepIndex = effectiveStep.maneuverIndex;
+              _lastBleManeuverType = effectiveStep.activeManeuver.type;
               _lastBleDistanceMeters = distRounded;
               _lastBleSentAt = now;
               _tripperBleService.sendManeuver(
@@ -784,6 +800,12 @@ class NavigationScreenState extends State<NavigationScreen> {
       });
     }
 
+    // Limpiar maniobra anterior del Tripper para no mostrar giros obsoletos durante el recálculo,
+    // preservando el keepalive periódico PING_FW y sin enviar opcodes especulativos como 0x1C.
+    _tripperBleService.clearActiveNavPacket(
+      reason: 'Recalculando ruta tras desvío confirmado',
+    );
+
     try {
       final recalculated = await _routingService
           .calculateRoute(
@@ -806,6 +828,7 @@ class NavigationScreenState extends State<NavigationScreen> {
 
       // Invalidar estado anterior sin mezclar maniobras ni geometría de la ruta previa
       _lastBleStepIndex = null;
+      _lastBleManeuverType = null;
       _lastBleDistanceMeters = null;
       _maneuverEngine.clear();
       _maneuverEngine.setRoute(versionedRoute);
@@ -940,6 +963,7 @@ class NavigationScreenState extends State<NavigationScreen> {
     _tripperBleService.stopNavigation();
     _activeTracker?.stopTracking();
     _lastBleStepIndex = null;
+    _lastBleManeuverType = null;
     _lastBleDistanceMeters = null;
     _lastBleSentAt = null;
     _startListeningGps();
@@ -1011,6 +1035,7 @@ class NavigationScreenState extends State<NavigationScreen> {
     );
     await _tripperBleService.stopNavigation();
     _lastBleStepIndex = null;
+    _lastBleManeuverType = null;
     _lastBleDistanceMeters = null;
     _lastBleSentAt = null;
     _startListeningGps();

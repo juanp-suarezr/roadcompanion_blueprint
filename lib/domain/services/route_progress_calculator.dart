@@ -93,6 +93,11 @@ class RouteProgressCalculator {
   /// - [maxSegmentLookahead]: Número máximo de segmentos adicionales a evaluar hacia adelante (opcional).
   ///   Si es null, se evalúa toda la ruta restante hasta el destino sin restringir saltos a tramos lejanos más cercanos.
   ///
+  /// - [movementHeadingDegrees]: Rumbo azimutal de desplazamiento instantáneo del vehículo (opcional, [0.0..360.0]).
+  ///   Permite desambiguar carreteras paralelas o calzadas opuestas penalizando segmentos con azimut en sentido contrario.
+  /// - [headingPenaltyWeight]: Penalización métrica virtual aplicada al desempate de segmentos discordantes (> 90°).
+  ///   No altera la métrica de distancia física real reportada en [RouteProgress.distanceToRouteMeters].
+  ///
   /// Lanza [ArgumentError] si:
   /// - [geometry] tiene menos de 2 puntos o contiene coordenadas no finitas o fuera de rango.
   /// - [geometry] tiene longitud geométrica de 0.0 m (puntos coincidentes) pero [totalDistanceMeters] es > 0.0.
@@ -106,6 +111,8 @@ class RouteProgressCalculator {
     double? totalDistanceMeters,
     int? lastKnownSegmentIndex,
     int? maxSegmentLookahead,
+    double? movementHeadingDegrees,
+    double headingPenaltyWeight = 35.0,
   }) {
     if (geometry.length < 2) {
       throw ArgumentError.value(
@@ -215,7 +222,8 @@ class RouteProgressCalculator {
         : numSegments - 1;
 
     int bestSegmentIndex = startSegment;
-    double minDistanceToRoute = double.infinity;
+    double minPhysicalDistanceToRoute = double.infinity;
+    double minEffectiveDistanceToRoute = double.infinity;
     Coordinates bestProjectedPoint = geometry[startSegment];
     double bestTraveledAlongGeometry = cumulativeDistances[startSegment];
 
@@ -274,10 +282,23 @@ class RouteProgressCalculator {
 
       final double distanceToP = currentPosition.distanceTo(projected);
 
+      // Evaluación de concordancia angular para desambiguar calzadas paralelas y sentidos opuestos
+      double effectiveDistance = distanceToP;
+      if (movementHeadingDegrees != null && segmentLen > 1.0) {
+        final double segBearing = a.bearingTo(b);
+        double angleDelta = (movementHeadingDegrees - segBearing).abs() % 360.0;
+        if (angleDelta > 180.0) angleDelta = 360.0 - angleDelta;
+        // Segmentos en sentido contrario (> 90°) reciben penalización métrica virtual
+        if (angleDelta > 90.0) {
+          effectiveDistance += headingPenaltyWeight;
+        }
+      }
+
       // Desempate determinista estricto (<): si dos segmentos equidistan exactamente de P,
       // se preserva el segmento más temprano en el itinerario para evitar saltos hacia adelante sin estado.
-      if (distanceToP < minDistanceToRoute) {
-        minDistanceToRoute = distanceToP;
+      if (effectiveDistance < minEffectiveDistanceToRoute) {
+        minEffectiveDistanceToRoute = effectiveDistance;
+        minPhysicalDistanceToRoute = distanceToP;
         bestSegmentIndex = i;
         bestProjectedPoint = projected;
         bestTraveledAlongGeometry =
@@ -294,7 +315,9 @@ class RouteProgressCalculator {
         remainingDistanceMeters: 0.0,
         progressPercentage: 100.0,
         projectedPoint: bestProjectedPoint,
-        distanceToRouteMeters: minDistanceToRoute,
+        distanceToRouteMeters: minPhysicalDistanceToRoute.isFinite
+            ? minPhysicalDistanceToRoute
+            : 0.0,
         closestSegmentIndex: bestSegmentIndex,
       );
     }
@@ -346,7 +369,7 @@ class RouteProgressCalculator {
       remainingDistanceMeters: remaining,
       progressPercentage: percentage,
       projectedPoint: bestProjectedPoint,
-      distanceToRouteMeters: minDistanceToRoute,
+      distanceToRouteMeters: minPhysicalDistanceToRoute,
       closestSegmentIndex: bestSegmentIndex,
     );
   }
@@ -368,6 +391,8 @@ class RouteProgressCalculator {
     required Coordinates currentPosition,
     int? lastKnownSegmentIndex,
     int? maxSegmentLookahead,
+    double? movementHeadingDegrees,
+    double headingPenaltyWeight = 35.0,
   }) {
     return calculate(
       geometry: routePlan.geometry,
@@ -375,6 +400,8 @@ class RouteProgressCalculator {
       totalDistanceMeters: routePlan.totalDistanceMeters,
       lastKnownSegmentIndex: lastKnownSegmentIndex,
       maxSegmentLookahead: maxSegmentLookahead,
+      movementHeadingDegrees: movementHeadingDegrees,
+      headingPenaltyWeight: headingPenaltyWeight,
     );
   }
 }

@@ -28,6 +28,7 @@ class RouteValidationResult {
   final bool hasRestrictedAccess;
   final bool hasUnconfirmedTransitability;
   final bool hasDestinationGap;
+  final bool hasUnpavedSections;
   final AccessRestrictionRecord? detectedRestriction;
 
   /// Siempre false para rutas calculadas por datos públicos sin validación en campo.
@@ -40,6 +41,7 @@ class RouteValidationResult {
     this.hasRestrictedAccess = false,
     this.hasUnconfirmedTransitability = false,
     this.hasDestinationGap = false,
+    this.hasUnpavedSections = false,
     this.detectedRestriction,
     this.isFieldVerified = false,
   });
@@ -65,6 +67,7 @@ class RouteValidationResult {
     bool? hasRestrictedAccess,
     bool? hasUnconfirmedTransitability,
     bool? hasDestinationGap,
+    bool? hasUnpavedSections,
     AccessRestrictionRecord? detectedRestriction,
     bool? isFieldVerified,
   }) {
@@ -76,6 +79,7 @@ class RouteValidationResult {
       hasUnconfirmedTransitability:
           hasUnconfirmedTransitability ?? this.hasUnconfirmedTransitability,
       hasDestinationGap: hasDestinationGap ?? this.hasDestinationGap,
+      hasUnpavedSections: hasUnpavedSections ?? this.hasUnpavedSections,
       detectedRestriction: detectedRestriction ?? this.detectedRestriction,
       isFieldVerified: isFieldVerified ?? this.isFieldVerified,
     );
@@ -140,6 +144,7 @@ class RouteIntegrityValidator {
     // 2. Inspección rigurosa de pasos de maniobra y restricciones de acceso
     bool hasRestrictedAccess = false;
     bool hasUnconfirmedTransitability = false;
+    bool hasUnpavedSections = false;
     final confirmedReasons = <String>[];
     AccessRestrictionRecord? detectedRecord;
 
@@ -203,6 +208,23 @@ class RouteIntegrityValidator {
           hasUnconfirmedTransitability = true;
         }
 
+        // Detección de tramos sin pavimentar o caminos destapados si OSM los anota
+        final surface = (step['surface'] as String? ?? '').toLowerCase().trim();
+        final roadName = (step['name'] as String? ?? '').toLowerCase().trim();
+        if (surface == 'unpaved' ||
+            surface == 'compacted' ||
+            surface == 'gravel' ||
+            surface == 'ground' ||
+            surface == 'dirt' ||
+            surface == 'earth' ||
+            surface == 'grass' ||
+            surface == 'sand' ||
+            roadName.contains('trocha') ||
+            roadName.contains('destapado') ||
+            roadName.contains('camino destapado')) {
+          hasUnpavedSections = true;
+        }
+
         // Inspección de clases en intersecciones
         if (intersections != null) {
           for (final intersection in intersections) {
@@ -243,6 +265,12 @@ class RouteIntegrityValidator {
       );
     }
 
+    if (hasUnpavedSections) {
+      warnings.add(
+        'La ruta incluye tramos sin pavimentar o caminos destapados. Conduce con precaución.',
+      );
+    }
+
     // 3. Control de aproximación final al destino
     // Se valida la distancia entre el último punto de la geometría y el destino buscado.
     final lastPoint = geometry.last;
@@ -275,6 +303,7 @@ class RouteIntegrityValidator {
       hasRestrictedAccess: hasRestrictedAccess,
       hasUnconfirmedTransitability: hasUnconfirmedTransitability,
       hasDestinationGap: hasDestinationGap,
+      hasUnpavedSections: hasUnpavedSections,
       detectedRestriction: detectedRecord,
       isFieldVerified: false,
     );

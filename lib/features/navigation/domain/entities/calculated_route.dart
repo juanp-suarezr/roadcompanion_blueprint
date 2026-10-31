@@ -95,6 +95,9 @@ class CalculatedRoute {
   /// Indica si la calzada vehicular finaliza lejos del destino (> 300 m).
   bool get hasDestinationGap => validation.hasDestinationGap;
 
+  /// Indica si la ruta transita por tramos sin pavimentar o caminos destapados.
+  bool get hasUnpavedSections => validation.hasUnpavedSections;
+
   /// Crea una copia de la ruta con atributos de comparación actualizados.
   CalculatedRoute copyWith({
     RoutePlan? routePlan,

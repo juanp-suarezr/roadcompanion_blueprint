@@ -30,6 +30,7 @@ class GpxRouteTracker extends ChangeNotifier {
   final Duration gpsTimeoutDuration;
   final bool isDemoMode;
   final int routeVersion;
+  final double maxPlausibleSpeedKmh;
 
   // Estado del seguimiento
   GpxTrackingStatus _status = GpxTrackingStatus.idle;
@@ -38,6 +39,10 @@ class GpxRouteTracker extends ChangeNotifier {
   String? _statusMessage;
   String? _permissionError;
   String? _lastGpsError;
+
+  // Muestreo cinemático para filtrado de saltos GPS
+  GpsPosition? _pendingAnomalousPosition;
+  DateTime? _pendingAnomalousTime;
 
   // Telemetría acumulada
   int _lastKnownSegmentIndex = 0;
@@ -82,6 +87,7 @@ class GpxRouteTracker extends ChangeNotifier {
     this.gpsTimeoutDuration = const Duration(seconds: 12),
     this.isDemoMode = false,
     this.routeVersion = 1,
+    this.maxPlausibleSpeedKmh = 140.0,
   }) : _locationService = locationService ?? const GeolocatorLocationService(),
        _calculator = calculator,
        _sessionRepository = sessionRepository,
@@ -293,6 +299,61 @@ class GpxRouteTracker extends ChangeNotifier {
       return;
     }
 
+    // 1b. Filtro cinemático multivariable contra saltos GPS anómalos
+    // Evalúa distancia entre muestras, tiempo transcurrido, velocidad requerida
+    // y concordancia espacial para rechazar ruidos aislados sin descartar recuperaciones reales.
+    if (_recordedPositions.isNotEmpty && _lastPositionInterval != null) {
+      final prevAcceptedPos = _recordedPositions.last;
+      final elapsedSec = _lastPositionInterval!.inMilliseconds / 1000.0;
+      final deltaDistMeters = prevAcceptedPos.coordinates.distanceTo(
+        pos.coordinates,
+      );
+
+      if (elapsedSec > 0.05 && elapsedSec < 4.0) {
+        final calculatedSpeedKmh = (deltaDistMeters / elapsedSec) * 3.6;
+
+        if (calculatedSpeedKmh > maxPlausibleSpeedKmh) {
+          if (_pendingAnomalousPosition == null) {
+            // Primer salto anómalo detectado: se aísla preventivamente como candidato sospechoso
+            // sin alterar el segmento activo, sin incrementar offRoute y sin desviar la navegación.
+            _pendingAnomalousPosition = pos;
+            _pendingAnomalousTime = now;
+            _statusMessage =
+                'Filtrando salto GPS anómalo (${calculatedSpeedKmh.round()} km/h)...';
+            notifyListeners();
+            return;
+          } else {
+            // Si ya existía un salto previo, verificar si la nueva muestra es coherente con ese salto
+            // (lo que indicaría desplazamiento físico real confirmado, ej. tras salir de túnel).
+            final jumpElapsedSec = _pendingAnomalousTime != null
+                ? now.difference(_pendingAnomalousTime!).inMilliseconds / 1000.0
+                : 0.0;
+            final jumpDeltaDist = _pendingAnomalousPosition!.coordinates
+                .distanceTo(pos.coordinates);
+            final jumpSpeedKmh = jumpElapsedSec > 0.05
+                ? (jumpDeltaDist / jumpElapsedSec) * 3.6
+                : double.infinity;
+
+            if (jumpSpeedKmh > maxPlausibleSpeedKmh) {
+              // Sigue siendo un salto incoherente; actualizar candidato y mantener filtrado
+              _pendingAnomalousPosition = pos;
+              _pendingAnomalousTime = now;
+              _statusMessage = 'Ruido GPS transitorio descartado.';
+              notifyListeners();
+              return;
+            } else {
+              // Dos muestras consecutivas consistentes confirman la nueva posición física
+              _pendingAnomalousPosition = null;
+              _pendingAnomalousTime = null;
+            }
+          }
+        } else {
+          _pendingAnomalousPosition = null;
+          _pendingAnomalousTime = null;
+        }
+      }
+    }
+
     // 2. Acumular estadísticas de calidad GPS
     _validSamplesCount++;
     _sumAccuracy += pos.accuracyMeters;
@@ -335,6 +396,20 @@ class GpxRouteTracker extends ChangeNotifier {
         ? (lookaheadSegments * 2.5).round().clamp(12, 35)
         : lookaheadSegments;
 
+    // Determinar rumbo de desplazamiento para desambiguar carreteras paralelas y calzadas opuestas
+    double? movementHeading;
+    if (pos.headingDegrees != null &&
+        pos.headingDegrees!.isFinite &&
+        (pos.speedKmh == null || pos.speedKmh! > 6.0)) {
+      movementHeading = pos.headingDegrees;
+    } else if (_recordedPositions.length >= 2) {
+      final prevCoords =
+          _recordedPositions[_recordedPositions.length - 2].coordinates;
+      if (prevCoords.distanceTo(pos.coordinates) > 3.0) {
+        movementHeading = prevCoords.bearingTo(pos.coordinates);
+      }
+    }
+
     try {
       var progress = _calculator.calculate(
         geometry: geometry,
@@ -342,6 +417,7 @@ class GpxRouteTracker extends ChangeNotifier {
         totalDistanceMeters: route.totalGeographicDistanceMeters,
         lastKnownSegmentIndex: safeSegmentIndex,
         maxSegmentLookahead: effectiveLookahead,
+        movementHeadingDegrees: movementHeading,
       );
 
       // Si la ventana corta sugiere desvío (ej. curvas consecutivas o salto GPS en montaña),
@@ -354,6 +430,7 @@ class GpxRouteTracker extends ChangeNotifier {
           totalDistanceMeters: route.totalGeographicDistanceMeters,
           lastKnownSegmentIndex: safeSegmentIndex,
           maxSegmentLookahead: 60,
+          movementHeadingDegrees: movementHeading,
         );
         if (recoveryCandidate.distanceToRouteMeters <=
             offRouteThresholdMeters) {

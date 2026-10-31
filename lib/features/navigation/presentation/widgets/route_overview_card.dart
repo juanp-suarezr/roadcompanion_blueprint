@@ -551,6 +551,46 @@ class RouteOverviewCard extends StatelessWidget {
                       ),
                     ),
                   )
+                else if (route.hasUnpavedSections)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4.0,
+                      vertical: 1.5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4.0),
+                    ),
+                    child: const Text(
+                      'DESTAPADO',
+                      style: TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                  )
+                else if (index == 0 && route.isPubliclyPassable)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4.0,
+                      vertical: 1.5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.cyanLuminous.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(4.0),
+                    ),
+                    child: Text(
+                      'RECOMENDADA',
+                      style: TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w800,
+                        color: isDark
+                            ? AppColors.cyanLuminous
+                            : AppColors.surfaceNavy,
+                      ),
+                    ),
+                  )
                 else if (route.isPreferred)
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -645,6 +685,30 @@ class RouteOverviewCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+            if (index > 0 &&
+                (route.durationDiff != null ||
+                    route.distanceDiffKm != null)) ...[
+              const SizedBox(height: 2.0),
+              Text(
+                [
+                  if (route.durationDiff != null &&
+                      route.durationDiff!.inMinutes > 0)
+                    '+${route.durationDiff!.inMinutes} min',
+                  if (route.distanceDiffKm != null &&
+                      route.distanceDiffKm! > 0.05)
+                    '+${route.distanceDiffKm!.toStringAsFixed(1)} km',
+                ].join(' • '),
+                style: TextStyle(
+                  fontSize: 10.0,
+                  fontWeight: FontWeight.w700,
+                  color: isDark
+                      ? const Color(0xFF8AAEC4)
+                      : const Color(0xFF5A758A),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
         ),
       ),

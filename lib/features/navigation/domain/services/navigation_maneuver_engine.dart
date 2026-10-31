@@ -1,5 +1,6 @@
 import '../../../../domain/entities/coordinates.dart';
 import '../../../../domain/entities/maneuver.dart';
+import '../../../../domain/entities/maneuver_type.dart';
 import '../../../../domain/entities/route_progress.dart';
 import '../../../../domain/services/route_progress_calculator.dart';
 import '../entities/calculated_route.dart';
@@ -15,18 +16,30 @@ class NavigationManeuverStep {
   /// Distancia real restante por carretera hasta el punto de la maniobra en metros.
   final double distanceToManeuverMeters;
 
+  /// Distancia real restante hasta el próximo hito vial o cruce intermedio en metros.
+  final double? distanceToMilestoneMeters;
+
+  /// Distancia total restante hasta el destino final en metros.
+  final double? totalRemainingDistanceMeters;
+
   /// Índice de la maniobra activa en la lista de maniobras de la ruta.
   final int maneuverIndex;
 
   /// Indica si es la última maniobra del recorrido (llegada al destino).
   final bool isLastManeuver;
 
+  /// Indica si el paso actual corresponde a mantenimiento en calzada recta prolongada.
+  final bool isHighwayStraightContinuation;
+
   const NavigationManeuverStep({
     required this.activeManeuver,
     this.nextManeuver,
     required this.distanceToManeuverMeters,
+    this.distanceToMilestoneMeters,
+    this.totalRemainingDistanceMeters,
     required this.maneuverIndex,
     required this.isLastManeuver,
+    this.isHighwayStraightContinuation = false,
   });
 }
 
@@ -115,9 +128,15 @@ class NavigationManeuverEngine {
 
   /// Resuelve la maniobra activa y la distancia métrica restante a ella
   /// a partir de la posición GPS actual del motociclista o el progreso calculado.
+  ///
+  /// En tramos de carretera nacional donde el próximo giro se encuentra a más de
+  /// [highwayStraightThresholdMeters] (por defecto 1500 m), sintetiza un paso de
+  /// continuidad recta hacia ese hito, asegurando que la flecha permanezca recta
+  /// con distancia decreciente real sin inventar metros ni confundir al conductor.
   NavigationManeuverStep? resolveStep({
     required Coordinates currentCoordinates,
     RouteProgress? progress,
+    double highwayStraightThresholdMeters = 1500.0,
   }) {
     if (_route == null || _route!.routePlan.maneuvers.isEmpty) {
       return null;
@@ -167,12 +186,63 @@ class NavigationManeuverEngine {
         ? maneuvers[activeIdx + 1]
         : null;
 
+    final totalRemainingDist = _route != null && _cumulativeDistances.isNotEmpty
+        ? (_cumulativeDistances.last - riderDistAlongRoute).clamp(
+            0.0,
+            _cumulativeDistances.last,
+          )
+        : null;
+
+    final bool isTurnManeuver =
+        activeManeuver.type != ManeuverType.straight &&
+        activeManeuver.type != ManeuverType.depart &&
+        activeManeuver.type != ManeuverType.arrive;
+
+    // Si la próxima maniobra está a más del umbral de anticipación (ej. > 1500 m en carretera),
+    // o si es la llegada a destino a gran distancia, estructurar la instrucción como
+    // mantenimiento recto hacia ese hito para que el display muestre flecha recta con
+    // distancia decreciente real sin alarmar al conductor prematuramente con giros lejanos.
+    final bool shouldShowStraightContinuation =
+        (isTurnManeuver &&
+            distanceToManeuver > highwayStraightThresholdMeters) ||
+        (activeIdx == maneuvers.length - 1 &&
+            activeManeuver.type == ManeuverType.arrive &&
+            distanceToManeuver > highwayStraightThresholdMeters);
+
+    if (shouldShowStraightContinuation) {
+      final roadName =
+          activeManeuver.roadName ?? _route?.summary ?? 'la vía principal';
+      final straightManeuver = Maneuver(
+        type: ManeuverType.straight,
+        location: activeManeuver.location,
+        instructionText: 'Continúa por $roadName',
+        roadName: roadName,
+        distanceMeters: distanceToManeuver,
+      );
+
+      final step = NavigationManeuverStep(
+        activeManeuver: straightManeuver,
+        nextManeuver: activeManeuver,
+        distanceToManeuverMeters: distanceToManeuver,
+        distanceToMilestoneMeters: distanceToManeuver,
+        totalRemainingDistanceMeters: totalRemainingDist,
+        maneuverIndex: activeIdx,
+        isLastManeuver: false,
+        isHighwayStraightContinuation: true,
+      );
+      _lastResolvedStep = step;
+      return step;
+    }
+
     final step = NavigationManeuverStep(
       activeManeuver: activeManeuver,
       nextManeuver: nextManeuver,
       distanceToManeuverMeters: distanceToManeuver,
+      distanceToMilestoneMeters: distanceToManeuver,
+      totalRemainingDistanceMeters: totalRemainingDist,
       maneuverIndex: activeIdx,
       isLastManeuver: activeIdx == maneuvers.length - 1,
+      isHighwayStraightContinuation: false,
     );
     _lastResolvedStep = step;
     return step;
