@@ -18,6 +18,7 @@ import 'package:road_companion/features/navigation/domain/services/navigation_ma
 import 'package:road_companion/features/navigation/domain/services/road_curvature_estimator.dart';
 import 'package:road_companion/features/navigation/domain/services/route_integrity_validator.dart';
 import 'package:road_companion/features/navigation/presentation/state/gpx_route_tracker.dart';
+import 'package:road_companion/features/navigation/infrastructure/services/nominatim_geocoding_service.dart';
 
 class _FakeLocationStream implements LocationService {
   final _controller = StreamController<GpsPosition>.broadcast();
@@ -809,9 +810,18 @@ void main() {
         engine = NavigationManeuverEngine();
 
         final p0 = Coordinates(4.8000, -75.7000); // Salida
-        final p1 = Coordinates(4.8018, -75.7000); // Giro a la izquierda a ~200 m
-        final p2 = Coordinates(4.8018, -75.7050); // Siguiente hito a ~550 m más (~750m total)
-        final p3 = Coordinates(4.8018, -75.7100); // Llegada destino (~1300m total)
+        final p1 = Coordinates(
+          4.8018,
+          -75.7000,
+        ); // Giro a la izquierda a ~200 m
+        final p2 = Coordinates(
+          4.8018,
+          -75.7050,
+        ); // Siguiente hito a ~550 m más (~750m total)
+        final p3 = Coordinates(
+          4.8018,
+          -75.7100,
+        ); // Llegada destino (~1300m total)
 
         urbanRoute = CalculatedRoute(
           summary: 'Ruta Urbana de Prueba',
@@ -856,82 +866,267 @@ void main() {
         engine.setRoute(urbanRoute);
       });
 
-      test('A.1. Reproducción física: salida (depart) conmuta a giro (left) sin flip-flop ante fluctuaciones GPS', () {
-        // En los primeros 10 metros, la maniobra activa es la salida
-        final stepStart = engine.resolveStep(
-          currentCoordinates: Coordinates(4.80005, -75.7000), // ~5 m
-        );
-        expect(stepStart?.activeManeuver.type, equals(ManeuverType.depart));
-        expect(stepStart?.maneuverIndex, equals(0));
+      test(
+        'A.1. Reproducción física: salida (depart) conmuta a giro (left) sin flip-flop ante fluctuaciones GPS',
+        () {
+          // En los primeros 10 metros, la maniobra activa es la salida
+          final stepStart = engine.resolveStep(
+            currentCoordinates: Coordinates(4.80005, -75.7000), // ~5 m
+          );
+          expect(stepStart?.activeManeuver.type, equals(ManeuverType.depart));
+          expect(stepStart?.maneuverIndex, equals(0));
 
-        // A los 18 metros (> 15 m), avanza a la maniobra 1 (giro a la izquierda)
-        final stepAdvance = engine.resolveStep(
-          currentCoordinates: Coordinates(4.80016, -75.7000), // ~18 m
-        );
-        expect(stepAdvance?.activeManeuver.type, equals(ManeuverType.left));
-        expect(stepAdvance?.maneuverIndex, equals(1));
-        expect(stepAdvance?.distanceToManeuverMeters, closeTo(182.0, 5.0));
+          // A los 18 metros (> 15 m), avanza a la maniobra 1 (giro a la izquierda)
+          final stepAdvance = engine.resolveStep(
+            currentCoordinates: Coordinates(4.80016, -75.7000), // ~18 m
+          );
+          expect(stepAdvance?.activeManeuver.type, equals(ManeuverType.left));
+          expect(stepAdvance?.maneuverIndex, equals(1));
+          expect(stepAdvance?.distanceToManeuverMeters, closeTo(182.0, 5.0));
 
-        // Fluctuación GPS hacia atrás: muestra en 12 m (ruido GPS habitual)
-        // La regla monotónica y de histéresis PROHÍBE retroceder a la maniobra 0 (depart/straight)
-        final stepJitter = engine.resolveStep(
-          currentCoordinates: Coordinates(4.80011, -75.7000), // ~12 m
-        );
-        expect(stepJitter?.activeManeuver.type, equals(ManeuverType.left));
-        expect(stepJitter?.maneuverIndex, equals(1));
-        expect(stepJitter?.distanceToManeuverMeters, greaterThan(0.0));
-      });
+          // Fluctuación GPS hacia atrás: muestra en 12 m (ruido GPS habitual)
+          // La regla monotónica y de histéresis PROHÍBE retroceder a la maniobra 0 (depart/straight)
+          final stepJitter = engine.resolveStep(
+            currentCoordinates: Coordinates(4.80011, -75.7000), // ~12 m
+          );
+          expect(stepJitter?.activeManeuver.type, equals(ManeuverType.left));
+          expect(stepJitter?.maneuverIndex, equals(1));
+          expect(stepJitter?.distanceToManeuverMeters, greaterThan(0.0));
+        },
+      );
 
-      test('A.2. Ejecución del giro: no produce aumentos de distancia euclidianos al alejarse del vértice', () {
-        // Establecer el avance al giro a la izquierda (Maneuver 1 en p1 a ~200 m)
-        engine.resolveStep(currentCoordinates: Coordinates(4.80016, -75.7000)); // activa idx 1
+      test(
+        'A.2. Ejecución del giro: no produce aumentos de distancia euclidianos al alejarse del vértice',
+        () {
+          // Establecer el avance al giro a la izquierda (Maneuver 1 en p1 a ~200 m)
+          engine.resolveStep(
+            currentCoordinates: Coordinates(4.80016, -75.7000),
+          ); // activa idx 1
 
-        // A 10 m del giro: distancia métrica positiva
-        final stepApproaching = engine.resolveStep(
-          currentCoordinates: Coordinates(4.80171, -75.7000), // ~190 m del inicio (~10 m al giro)
-        );
-        expect(stepApproaching?.activeManeuver.type, equals(ManeuverType.left));
-        expect(stepApproaching?.maneuverIndex, equals(1));
-        expect(stepApproaching?.distanceToManeuverMeters, closeTo(10.0, 3.0));
+          // A 10 m del giro: distancia métrica positiva
+          final stepApproaching = engine.resolveStep(
+            currentCoordinates: Coordinates(
+              4.80171,
+              -75.7000,
+            ), // ~190 m del inicio (~10 m al giro)
+          );
+          expect(
+            stepApproaching?.activeManeuver.type,
+            equals(ManeuverType.left),
+          );
+          expect(stepApproaching?.maneuverIndex, equals(1));
+          expect(stepApproaching?.distanceToManeuverMeters, closeTo(10.0, 3.0));
 
-        // Justo en el ápice o 4 m pasados del giro: la distancia debe permanecer en 0.0 ("Ahora"),
-        // NO debe calcular distancia euclidiana hacia atrás que aumente a 126m o 235m.
-        final stepApex = engine.resolveStep(
-          currentCoordinates: Coordinates(4.8018, -75.70004), // ~204 m (4m pasado del vértice)
-        );
-        expect(stepApex?.activeManeuver.type, equals(ManeuverType.left));
-        expect(stepApex?.distanceToManeuverMeters, equals(0.0));
+          // Justo en el ápice o 4 m pasados del giro: la distancia debe permanecer en 0.0 ("Ahora"),
+          // NO debe calcular distancia euclidiana hacia atrás que aumente a 126m o 235m.
+          final stepApex = engine.resolveStep(
+            currentCoordinates: Coordinates(
+              4.8018,
+              -75.70004,
+            ), // ~204 m (4m pasado del vértice)
+          );
+          expect(stepApex?.activeManeuver.type, equals(ManeuverType.left));
+          expect(stepApex?.distanceToManeuverMeters, equals(0.0));
 
-        // Al superar los 10 m tras el giro (ej. a 215 m del inicio), conmuta limpiamente a la maniobra 2 (straight)
-        final stepPassed = engine.resolveStep(
-          currentCoordinates: Coordinates(4.8018, -75.70014), // ~215 m (15m pasado del giro)
-        );
-        expect(stepPassed?.activeManeuver.type, equals(ManeuverType.straight));
-        expect(stepPassed?.maneuverIndex, equals(2));
-        // La distancia a la siguiente maniobra (p2) es decreciente respecto a su posición
-        expect(stepPassed?.distanceToManeuverMeters, closeTo(535.0, 10.0));
-      });
+          // Al superar los 10 m tras el giro (ej. a 215 m del inicio), conmuta limpiamente a la maniobra 2 (straight)
+          final stepPassed = engine.resolveStep(
+            currentCoordinates: Coordinates(
+              4.8018,
+              -75.70014,
+            ), // ~215 m (15m pasado del giro)
+          );
+          expect(
+            stepPassed?.activeManeuver.type,
+            equals(ManeuverType.straight),
+          );
+          expect(stepPassed?.maneuverIndex, equals(2));
+          // La distancia a la siguiente maniobra (p2) es decreciente respecto a su posición
+          expect(stepPassed?.distanceToManeuverMeters, closeTo(535.0, 10.0));
+        },
+      );
 
-      test('A.3. Recálculo de ruta: reinicia el índice monotónico a 0 con la nueva versión de ruta', () {
-        // Avanzar a maniobra 2 en la versión 1
-        engine.resolveStep(currentCoordinates: Coordinates(4.80016, -75.7000));
-        engine.resolveStep(currentCoordinates: Coordinates(4.8018, -75.70014));
-        expect(engine.activeManeuverIndex, equals(2));
+      test(
+        'A.3. Recálculo de ruta: reinicia el índice monotónico a 0 con la nueva versión de ruta',
+        () {
+          // Avanzar a maniobra 2 en la versión 1
+          engine.resolveStep(
+            currentCoordinates: Coordinates(4.80016, -75.7000),
+          );
+          engine.resolveStep(
+            currentCoordinates: Coordinates(4.8018, -75.70014),
+          );
+          expect(engine.activeManeuverIndex, equals(2));
 
-        // Se recibe nueva ruta recalculada con routeVersion = 2
-        final recalculated = urbanRoute.copyWith(
-          summary: 'Ruta Recalculada tras desvío',
-          routeVersion: 2,
-        );
-        engine.setRoute(recalculated);
+          // Se recibe nueva ruta recalculada con routeVersion = 2
+          final recalculated = urbanRoute.copyWith(
+            summary: 'Ruta Recalculada tras desvío',
+            routeVersion: 2,
+          );
+          engine.setRoute(recalculated);
 
-        expect(engine.activeManeuverIndex, equals(0));
-        final stepNew = engine.resolveStep(
-          currentCoordinates: urbanRoute.origin,
-        );
-        expect(stepNew?.maneuverIndex, equals(0));
-        expect(stepNew?.activeManeuver.type, equals(ManeuverType.depart));
-      });
+          expect(engine.activeManeuverIndex, equals(0));
+          final stepNew = engine.resolveStep(
+            currentCoordinates: urbanRoute.origin,
+          );
+          expect(stepNew?.maneuverIndex, equals(0));
+          expect(stepNew?.activeManeuver.type, equals(ManeuverType.depart));
+        },
+      );
+
+      test(
+        'A.4. Curvas/giros consecutivos: dos giros a la izquierda separados por 30m no saltan la maniobra intermedia ni disparan distancias anómalas',
+        () {
+          final p0 = Coordinates(4.8000, -75.7000);
+          final p1 = Coordinates(4.8010, -75.7000);
+          final p2 = Coordinates(4.8010, -75.7003);
+          final p3 = Coordinates(4.8000, -75.7003);
+          final consecutiveTurnsRoute = CalculatedRoute(
+            summary: 'Ruta Giros Consecutivos Cortos',
+            routePlan: RoutePlan(
+              origin: p0,
+              destination: p3,
+              totalDistanceMeters: 250.0,
+              estimatedDuration: const Duration(seconds: 60),
+              geometry: [p0, p1, p2, p3],
+              maneuvers: [
+                Maneuver(
+                  instructionText: 'Inicie recorrido hacia el norte',
+                  type: ManeuverType.depart,
+                  location: p0,
+                  distanceMeters: 111.0,
+                ),
+                Maneuver(
+                  instructionText: 'Gire a la izquierda en Calle 1',
+                  type: ManeuverType.left,
+                  location: p1,
+                  distanceMeters: 33.0,
+                ),
+                Maneuver(
+                  instructionText: 'Gire a la izquierda en Carrera 2',
+                  type: ManeuverType.left,
+                  location: p2,
+                  distanceMeters: 111.0,
+                ),
+                Maneuver(
+                  instructionText: 'Ha llegado a su destino',
+                  type: ManeuverType.arrive,
+                  location: p3,
+                  distanceMeters: 0.0,
+                ),
+              ],
+              routeVersion: 1,
+            ),
+          );
+
+          final testEngine = NavigationManeuverEngine();
+          testEngine.setRoute(consecutiveTurnsRoute);
+
+          // A 20m de salida: apunta a Maniobra 1 (Left)
+          final step1 = testEngine.resolveStep(
+            currentCoordinates: Coordinates(4.80018, -75.7000),
+          );
+          expect(step1?.maneuverIndex, equals(1));
+          expect(step1?.activeManeuver.type, equals(ManeuverType.left));
+          expect(step1?.distanceToManeuverMeters, closeTo(91.0, 5.0));
+
+          // Justo al aproximarse al giro 1 (~105m): distancia ~6m
+          final step1Near = testEngine.resolveStep(
+            currentCoordinates: Coordinates(4.80095, -75.7000),
+          );
+          expect(step1Near?.maneuverIndex, equals(1));
+          expect(step1Near?.distanceToManeuverMeters, closeTo(6.0, 3.0));
+
+          // En el ápice del giro 1 (5m tras el vértice, dentro de los 10m de histéresis):
+          // La distancia permanece en 0.0 ("Ahora") sin aumentar ni retroceder
+          final step1Apex = testEngine.resolveStep(
+            currentCoordinates: Coordinates(4.8010, -75.70004),
+          );
+          expect(step1Apex?.maneuverIndex, equals(1));
+          expect(step1Apex?.distanceToManeuverMeters, equals(0.0));
+
+          // Al superar los 10m tras el giro 1 (a ~12m de p1, es decir ~123m acumulados):
+          // Se activa Maniobra 2 (Turn 2 a ~21m de distancia) sin saltarse a Arrive ni revertir a Depart
+          final step2 = testEngine.resolveStep(
+            currentCoordinates: Coordinates(4.8010, -75.70011),
+          );
+          expect(step2?.maneuverIndex, equals(2));
+          expect(step2?.activeManeuver.type, equals(ManeuverType.left));
+          expect(step2?.distanceToManeuverMeters, closeTo(21.0, 4.0));
+
+          // Pasado el giro 2 (a 155m acumulados):
+          // Conmuta limpiamente a la maniobra final (Arrive)
+          final stepArrive = testEngine.resolveStep(
+            currentCoordinates: Coordinates(4.8009, -75.7003),
+          );
+          expect(stepArrive?.maneuverIndex, equals(3));
+          expect(stepArrive?.activeManeuver.type, equals(ManeuverType.arrive));
+          expect(stepArrive?.distanceToManeuverMeters, closeTo(100.0, 10.0));
+        },
+      );
+
+      test(
+        'A.5. Selección de ruta alternativa en mapa: detección por cercanía al trazado polyline (<= 45m)',
+        () {
+          const calculator = RouteProgressCalculator();
+          final routeAltGeometry = [
+            Coordinates(4.8000, -75.7000),
+            Coordinates(4.8000, -75.7100),
+            Coordinates(4.8100, -75.7100),
+          ];
+
+          // Punto tocado en el mapa a ~11m de la polyline alternativa
+          final tapPointNear = Coordinates(4.8001, -75.7050);
+          final progressNear = calculator.calculate(
+            geometry: routeAltGeometry,
+            currentPosition: tapPointNear,
+          );
+          expect(progressNear.distanceToRouteMeters, lessThanOrEqualTo(45.0));
+
+          // Punto tocado lejos (a 120m del trazado alternativo)
+          final tapPointFar = Coordinates(4.8011, -75.7050);
+          final progressFar = calculator.calculate(
+            geometry: routeAltGeometry,
+            currentPosition: tapPointFar,
+          );
+          expect(progressFar.distanceToRouteMeters, greaterThan(45.0));
+        },
+      );
+
+      test(
+        'A.6. Geocodificación directa: parseo de coordenadas decimales en diversos formatos para Colombia',
+        () {
+          // Formato estándar con coma
+          final resComma = NominatimGeocodingService.tryParseCoordinatesQuery(
+            '4.81234, -75.69876',
+          );
+          expect(resComma, isNotNull);
+          expect(resComma!.coordinates.latitude, closeTo(4.81234, 0.00001));
+          expect(resComma.coordinates.longitude, closeTo(-75.69876, 0.00001));
+          expect(resComma.category, equals('coordinates'));
+
+          // Formato con espacios y sin coma
+          final resSpace = NominatimGeocodingService.tryParseCoordinatesQuery(
+            '5.06889 -75.51738',
+          );
+          expect(resSpace, isNotNull);
+          expect(resSpace!.coordinates.latitude, closeTo(5.06889, 0.00001));
+          expect(resSpace.coordinates.longitude, closeTo(-75.51738, 0.00001));
+
+          // Formato con espacios extra
+          final resPadded = NominatimGeocodingService.tryParseCoordinatesQuery(
+            '  4.8000 ,  -75.7000  ',
+          );
+          expect(resPadded, isNotNull);
+          expect(resPadded!.coordinates.latitude, closeTo(4.8000, 0.00001));
+          expect(resPadded.coordinates.longitude, closeTo(-75.7000, 0.00001));
+
+          // Cadena de texto arbitraria (no es coordenada) -> retorna null
+          final resText = NominatimGeocodingService.tryParseCoordinatesQuery(
+            'Plaza de Bolívar Manizales',
+          );
+          expect(resText, isNull);
+        },
+      );
     });
   });
 }

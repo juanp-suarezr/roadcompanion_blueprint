@@ -33,6 +33,7 @@ import '../infrastructure/services/osrm_routing_service.dart';
 import '../infrastructure/services/flutter_tts_voice_navigation_service.dart';
 import '../domain/entities/gpx_tracking_status.dart';
 import '../domain/entities/road_curvature.dart';
+import '../domain/entities/tripper_connection_state.dart';
 import '../domain/entities/tripper_maneuver_payload.dart';
 import '../domain/services/tripper_ble_service.dart';
 import '../domain/services/tripper_protocol.dart';
@@ -172,6 +173,7 @@ class NavigationScreenState extends State<NavigationScreen>
   ManeuverType? _lastBleManeuverType;
   int? _lastBleDistanceMeters;
   DateTime? _lastBleSentAt;
+  StreamSubscription<TripperConnectionState>? _bleStateSubscription;
 
   @visibleForTesting
   CalculatedRoute? get calculatedRoute => _calculatedRoute;
@@ -232,6 +234,10 @@ class NavigationScreenState extends State<NavigationScreen>
 
     _voiceService.init();
     _initGpsListener();
+    _bleStateSubscription = _tripperBleService.stateStream.listen((state) {
+      if (!mounted) return;
+      _onBleStateChanged(state);
+    });
   }
 
   ImportedRouteState _resolveRouteState(BuildContext context) {
@@ -297,6 +303,41 @@ class NavigationScreenState extends State<NavigationScreen>
     }
   }
 
+  void _onBleStateChanged(TripperConnectionState state) {
+    if (state.isReadyForNavigation && _isNavigatingCalculatedRoute) {
+      _lastBleStepIndex = null;
+      _lastBleManeuverType = null;
+      _lastBleDistanceMeters = null;
+      _lastBleSentAt = null;
+
+      final selectedSource =
+          AppSettingsScope.maybeOf(context)?.selectedNavigationSource ??
+          SelectedNavigationSourceType.internal;
+      if (selectedSource == SelectedNavigationSourceType.internal) {
+        final step = _resolveCurrentManeuverStep();
+        if (step != null) {
+          final opcode = TripperProtocol.mapManeuverToTripperCode(
+            step.activeManeuver.type,
+          );
+          if (opcode != null) {
+            final distRounded = step.distanceToManeuverMeters.round();
+            _lastBleStepIndex = step.maneuverIndex;
+            _lastBleManeuverType = step.activeManeuver.type;
+            _lastBleDistanceMeters = distRounded;
+            _lastBleSentAt = DateTime.now();
+            _tripperBleService.sendManeuver(
+              TripperManeuverPayload.fromManeuver(
+                type: step.activeManeuver.type,
+                distanceMeters: distRounded,
+                nextStreet: step.activeManeuver.roadName ?? '',
+              ),
+            );
+          }
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -306,6 +347,7 @@ class NavigationScreenState extends State<NavigationScreen>
       _simulatorService.dispose();
     }
     _gpsLocationSubscription?.cancel();
+    _bleStateSubscription?.cancel();
     _demoController.dispose();
     _activeTracker?.dispose();
     _localRouteState?.dispose();
@@ -476,6 +518,37 @@ class NavigationScreenState extends State<NavigationScreen>
     if (_isNavigatingCalculatedRoute) return;
 
     final coords = Coordinates(point.latitude, point.longitude);
+
+    // Si existen alternativas calculadas y el usuario toca cerca del trazado de una ruta no seleccionada,
+    // conmutar interactivamente a esa alternativa sin reemplazar el destino.
+    if (_availableRoutes.length > 1 && _calculatedRoute != null) {
+      final calculator = widget.calculator ?? const RouteProgressCalculator();
+      int tappedAlternativeIndex = -1;
+      double closestDistance = double.infinity;
+
+      for (int i = 0; i < _availableRoutes.length; i++) {
+        if (i == _selectedRouteIndex) continue;
+        final geom = _availableRoutes[i].geometry;
+        if (geom.length < 2) continue;
+        try {
+          final progress = calculator.calculate(
+            geometry: geom,
+            currentPosition: coords,
+          );
+          if (progress.distanceToRouteMeters <= 45.0 &&
+              progress.distanceToRouteMeters < closestDistance) {
+            closestDistance = progress.distanceToRouteMeters;
+            tappedAlternativeIndex = i;
+          }
+        } catch (_) {}
+      }
+
+      if (tappedAlternativeIndex != -1) {
+        _selectRouteAlternative(tappedAlternativeIndex);
+        return;
+      }
+    }
+
     final fallbackDestination = Destination(
       id: 'point_${point.latitude.toStringAsFixed(5)}_${point.longitude.toStringAsFixed(5)}',
       title: 'Ubicación seleccionada',
@@ -1125,6 +1198,9 @@ class NavigationScreenState extends State<NavigationScreen>
 
   NavigationManeuverStep? _resolveCurrentManeuverStep() {
     if (_calculatedRoute == null) return null;
+    if (_maneuverEngine.lastResolvedStep != null) {
+      return _maneuverEngine.lastResolvedStep;
+    }
     final pos =
         _currentRiderCoordinates ??
         _activeTracker?.currentPosition?.coordinates;
@@ -1132,6 +1208,11 @@ class NavigationScreenState extends State<NavigationScreen>
     return _maneuverEngine.resolveStep(
       currentCoordinates: pos,
       progress: _activeTracker?.currentProgress,
+      currentSegmentIndex: _activeTracker?.currentSegmentIndex,
+      gpsAccuracy: _activeTracker?.currentPosition?.accuracyMeters,
+      gpsSpeed: _activeTracker?.currentPosition?.speedKmh,
+      movementHeading: _activeTracker?.currentPosition?.headingDegrees,
+      recalculationRequestSeq: _recalculationRequestSeq,
     );
   }
 
