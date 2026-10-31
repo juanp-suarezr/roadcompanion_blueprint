@@ -52,16 +52,27 @@ class NavigationManeuverEngine {
   final List<double> _maneuverDistancesAlongRoute = [];
   NavigationManeuverStep? _lastResolvedStep;
 
+  int _activeManeuverIndex = 0;
+  int _lastRouteVersion = -1;
+
+  /// Callback de diagnóstico correlacionado para registrar transiciones métricas
+  void Function(String message)? onDiagnosticLog;
+
   NavigationManeuverEngine({
     RouteProgressCalculator calculator = const RouteProgressCalculator(),
+    this.onDiagnosticLog,
   }) : _calculator = calculator;
 
   CalculatedRoute? get currentRoute => _route;
   NavigationManeuverStep? get lastResolvedStep => _lastResolvedStep;
+  int get activeManeuverIndex => _activeManeuverIndex;
 
   /// Configura la ruta y precalcula las distancias acumuladas a lo largo de la calzada.
   void setRoute(CalculatedRoute route) {
     _route = route;
+    _lastRouteVersion = route.routeVersion;
+    _activeManeuverIndex = 0;
+    _lastResolvedStep = null;
     _cumulativeDistances.clear();
     _maneuverDistancesAlongRoute.clear();
 
@@ -129,14 +140,18 @@ class NavigationManeuverEngine {
   /// Resuelve la maniobra activa y la distancia métrica restante a ella
   /// a partir de la posición GPS actual del motociclista o el progreso calculado.
   ///
-  /// En tramos de carretera nacional donde el próximo giro se encuentra a más de
-  /// [highwayStraightThresholdMeters] (por defecto 1500 m), sintetiza un paso de
-  /// continuidad recta hacia ese hito, asegurando que la flecha permanezca recta
-  /// con distancia decreciente real sin inventar metros ni confundir al conductor.
+  /// Garantiza avance monotónico sin retroceso por ruido GPS, calcula distancias
+  /// estrictamente a lo largo de la calzada vial y conmuta a la maniobra real
+  /// cuando el motociclista se aproxima a menos de [highwayStraightThresholdMeters].
   NavigationManeuverStep? resolveStep({
     required Coordinates currentCoordinates,
     RouteProgress? progress,
     double highwayStraightThresholdMeters = 1500.0,
+    int? currentSegmentIndex,
+    double? gpsAccuracy,
+    double? gpsSpeed,
+    double? movementHeading,
+    int? recalculationRequestSeq,
   }) {
     if (_route == null || _route!.routePlan.maneuvers.isEmpty) {
       return null;
@@ -145,6 +160,12 @@ class NavigationManeuverEngine {
     final maneuvers = _route!.routePlan.maneuvers;
     if (_maneuverDistancesAlongRoute.length != maneuvers.length) {
       return null;
+    }
+
+    // Si cambió la versión de la ruta por recálculo, reiniciar índice monotónico
+    if (_route!.routeVersion != _lastRouteVersion) {
+      _lastRouteVersion = _route!.routeVersion;
+      _activeManeuverIndex = 0;
     }
 
     // Distancia recorrida por el motociclista a lo largo de la ruta
@@ -158,29 +179,45 @@ class NavigationManeuverEngine {
       );
     }
 
-    // Buscar la primera maniobra que esté por delante del motociclista
-    // Se utiliza una tolerancia de -20 metros para no descartar el giro mientras se ejecuta
-    int activeIdx = -1;
-    for (int i = 0; i < maneuvers.length; i++) {
-      final maneuverDist = _maneuverDistancesAlongRoute[i];
-      // Si el punto de la maniobra está por delante (o hasta 20m atrás durante el giro)
-      if (maneuverDist >= riderDistAlongRoute - 20.0) {
-        activeIdx = i;
+    final previousIndex = _activeManeuverIndex;
+    String reason = 'Seguimiento continuo de maniobra';
+
+    // Regla 1: Tratamiento de salida (depart).
+    // Si estamos en maniobra 0 y es 'depart', tan pronto el vehículo recorre más de 15 metros,
+    // fijamos el objetivo en la maniobra 1 (el primer giro real por delante).
+    if (_activeManeuverIndex == 0 &&
+        maneuvers.length > 1 &&
+        maneuvers[0].type == ManeuverType.depart) {
+      if (riderDistAlongRoute >= 15.0) {
+        _activeManeuverIndex = 1;
+        reason =
+            'Salida inicial superada (avance >= 15m) -> fijando primer giro';
+      }
+    }
+
+    // Regla 2: Avance monotónico con histéresis anti-regresión (+10m).
+    // Una maniobra k se considera superada si el piloto ha avanzado más allá de su ubicación (+10 m)
+    // a lo largo de la calzada. El índice no puede retroceder bajo ninguna circunstancia.
+    while (_activeManeuverIndex < maneuvers.length - 1) {
+      final maneuverDist = _maneuverDistancesAlongRoute[_activeManeuverIndex];
+      if (riderDistAlongRoute >= maneuverDist + 10.0) {
+        _activeManeuverIndex++;
+        reason =
+            'Maniobra ${_activeManeuverIndex - 1} completada -> avanzando a index $_activeManeuverIndex';
+      } else {
         break;
       }
     }
 
-    // Si ya superó todas las maniobras intermedias, la activa es la última (llegada)
-    if (activeIdx == -1) {
-      activeIdx = maneuvers.length - 1;
-    }
-
+    final activeIdx = _activeManeuverIndex;
     final activeManeuver = maneuvers[activeIdx];
+
+    // Regla 3: Cálculo métrico a lo largo de la calzada (nunca distancia euclidiana hacia atrás).
     final double rawDistance =
         _maneuverDistancesAlongRoute[activeIdx] - riderDistAlongRoute;
-    final double distanceToManeuver = rawDistance > 0.0
-        ? rawDistance
-        : currentCoordinates.distanceTo(activeManeuver.location);
+    // Si rawDistance <= 0.0 (en el ápice del giro entre 0m y +10m), la distancia es 0.0 ("Ahora"),
+    // evitando saltos hacia atrás o aumento arbitrario mientras se dobla la esquina.
+    final double distanceToManeuver = rawDistance > 0.0 ? rawDistance : 0.0;
 
     final nextManeuver = (activeIdx + 1 < maneuvers.length)
         ? maneuvers[activeIdx + 1]
@@ -198,10 +235,7 @@ class NavigationManeuverEngine {
         activeManeuver.type != ManeuverType.depart &&
         activeManeuver.type != ManeuverType.arrive;
 
-    // Si la próxima maniobra está a más del umbral de anticipación (ej. > 1500 m en carretera),
-    // o si es la llegada a destino a gran distancia, estructurar la instrucción como
-    // mantenimiento recto hacia ese hito para que el display muestre flecha recta con
-    // distancia decreciente real sin alarmar al conductor prematuramente con giros lejanos.
+    // Regla 4: Continuidad en carreteras rectas prolongadas (> highwayStraightThresholdMeters)
     final bool shouldShowStraightContinuation =
         (isTurnManeuver &&
             distanceToManeuver > highwayStraightThresholdMeters) ||
@@ -209,6 +243,7 @@ class NavigationManeuverEngine {
             activeManeuver.type == ManeuverType.arrive &&
             distanceToManeuver > highwayStraightThresholdMeters);
 
+    final NavigationManeuverStep step;
     if (shouldShowStraightContinuation) {
       final roadName =
           activeManeuver.roadName ?? _route?.summary ?? 'la vía principal';
@@ -220,7 +255,7 @@ class NavigationManeuverEngine {
         distanceMeters: distanceToManeuver,
       );
 
-      final step = NavigationManeuverStep(
+      step = NavigationManeuverStep(
         activeManeuver: straightManeuver,
         nextManeuver: activeManeuver,
         distanceToManeuverMeters: distanceToManeuver,
@@ -230,27 +265,60 @@ class NavigationManeuverEngine {
         isLastManeuver: false,
         isHighwayStraightContinuation: true,
       );
-      _lastResolvedStep = step;
-      return step;
+    } else {
+      step = NavigationManeuverStep(
+        activeManeuver: activeManeuver,
+        nextManeuver: nextManeuver,
+        distanceToManeuverMeters: distanceToManeuver,
+        distanceToMilestoneMeters: distanceToManeuver,
+        totalRemainingDistanceMeters: totalRemainingDist,
+        maneuverIndex: activeIdx,
+        isLastManeuver: activeIdx == maneuvers.length - 1,
+        isHighwayStraightContinuation: false,
+      );
     }
 
-    final step = NavigationManeuverStep(
-      activeManeuver: activeManeuver,
-      nextManeuver: nextManeuver,
-      distanceToManeuverMeters: distanceToManeuver,
-      distanceToMilestoneMeters: distanceToManeuver,
-      totalRemainingDistanceMeters: totalRemainingDist,
-      maneuverIndex: activeIdx,
-      isLastManeuver: activeIdx == maneuvers.length - 1,
-      isHighwayStraightContinuation: false,
-    );
     _lastResolvedStep = step;
+
+    // Instrumentación diagnóstica correlacionada
+    if (onDiagnosticLog != null) {
+      final distRouteStr = progress != null
+          ? '${progress.distanceToRouteMeters.toStringAsFixed(1)}m'
+          : 'N/A';
+      final accStr = gpsAccuracy != null
+          ? '${gpsAccuracy.toStringAsFixed(1)}m'
+          : 'N/A';
+      final spdStr = gpsSpeed != null
+          ? '${gpsSpeed.toStringAsFixed(1)}km/h'
+          : 'N/A';
+      final hdgStr = movementHeading != null
+          ? '${movementHeading.round()}°'
+          : 'N/A';
+      onDiagnosticLog!(
+        '[REstelar:NAV] [step_resolved] '
+        'v=$_lastRouteVersion | '
+        'reqSeq=${recalculationRequestSeq ?? 0} | '
+        'seg=${currentSegmentIndex ?? 0} | '
+        'mIdx=$activeIdx (prev=$previousIndex) | '
+        'type=${step.activeManeuver.type.name} | '
+        'dist=${distanceToManeuver.round()}m | '
+        'riderDist=${riderDistAlongRoute.round()}m | '
+        'distToRoute=$distRouteStr | '
+        'acc=$accStr | '
+        'spd=$spdStr | '
+        'hdg=$hdgStr | '
+        'reason=$reason',
+      );
+    }
+
     return step;
   }
 
-  /// Limpia la ruta activa al finalizar la navegación.
+  /// Limpia la ruta activa al finalizar la navegación o en recálculo.
   void clear() {
     _route = null;
+    _activeManeuverIndex = 0;
+    _lastRouteVersion = -1;
     _lastResolvedStep = null;
     _cumulativeDistances.clear();
     _maneuverDistancesAlongRoute.clear();

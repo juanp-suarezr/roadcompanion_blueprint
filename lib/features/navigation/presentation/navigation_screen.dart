@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -117,7 +118,8 @@ class NavigationScreen extends StatefulWidget {
   State<NavigationScreen> createState() => NavigationScreenState();
 }
 
-class NavigationScreenState extends State<NavigationScreen> {
+class NavigationScreenState extends State<NavigationScreen>
+    with WidgetsBindingObserver {
   late final DemoNavigationController _demoController;
   late final MapController _mapController;
 
@@ -221,6 +223,13 @@ class NavigationScreenState extends State<NavigationScreen> {
 
     _currentMode = widget.initialMode ?? NavigationScreenMode.realMap;
 
+    WidgetsBinding.instance.addObserver(this);
+    _maneuverEngine.onDiagnosticLog = (msg) {
+      if (kDebugMode) {
+        debugPrint(msg);
+      }
+    };
+
     _voiceService.init();
     _initGpsListener();
   }
@@ -280,7 +289,17 @@ class NavigationScreenState extends State<NavigationScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final ble = _tripperBleService;
+    if (ble is FlutterBluePlusTripperService) {
+      ble.logAppLifecycleState(state.name);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _activeTracker?.removeListener(_onActiveTrackerProgress);
     _voiceService.dispose();
     if (_ownsSimulatorService) {
@@ -643,6 +662,11 @@ class NavigationScreenState extends State<NavigationScreen> {
       final step = _maneuverEngine.resolveStep(
         currentCoordinates: pos.coordinates,
         progress: _activeTracker!.currentProgress,
+        currentSegmentIndex: _activeTracker!.currentSegmentIndex,
+        gpsAccuracy: pos.accuracyMeters,
+        gpsSpeed: pos.speedKmh,
+        movementHeading: pos.headingDegrees,
+        recalculationRequestSeq: _recalculationRequestSeq,
       );
 
       final activeGeom =

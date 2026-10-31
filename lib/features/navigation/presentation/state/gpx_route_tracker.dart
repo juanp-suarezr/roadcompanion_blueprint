@@ -46,6 +46,7 @@ class GpxRouteTracker extends ChangeNotifier {
 
   // Telemetría acumulada
   int _lastKnownSegmentIndex = 0;
+  int _previousSegmentIndex = 0;
   double _monotonicDistanceTraveled = 0.0;
   double _offRouteDistanceMeters = 0.0;
   int _consecutiveOffRouteSamples = 0;
@@ -118,6 +119,8 @@ class GpxRouteTracker extends ChangeNotifier {
   Duration? get lastPositionInterval => _lastPositionInterval;
   int get totalPositionsReceived => _totalPositionsReceived;
 
+  int get currentSegmentIndex => _lastKnownSegmentIndex;
+  int get previousSegmentIndex => _previousSegmentIndex;
   double get offRouteDistanceMeters => _offRouteDistanceMeters;
   double get distanceTraveledMeters => _monotonicDistanceTraveled;
   double get remainingDistanceMeters =>
@@ -468,6 +471,7 @@ class GpxRouteTracker extends ChangeNotifier {
         _statusMessage = 'Siguiendo ruta GPX.';
 
         // Avanzar segmento y progreso de forma monotónica sin retrocesos erráticos
+        _previousSegmentIndex = _lastKnownSegmentIndex;
         _lastKnownSegmentIndex = progress.closestSegmentIndex;
         if (progress.distanceTraveledMeters >= _monotonicDistanceTraveled) {
           _monotonicDistanceTraveled = progress.distanceTraveledMeters;

@@ -596,7 +596,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
             ? now.difference(_lastKeepAliveSentTime!).inMilliseconds
             : -1;
 
-        _log('[BLE-EVENT] Evento connectionState nativo: ${state.name}');
+        _log(
+          '[REstelar:BLE] [GATT_CONNECTION_STATE] Evento connectionState nativo: ${state.name}',
+        );
         if (state == BluetoothConnectionState.disconnected &&
             (_currentState.isReadyForNavigation ||
                 _currentState == TripperConnectionState.gattConnected ||
@@ -897,47 +899,82 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
   void _startKeepAliveTimer() {
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _log(
+      '[REstelar:BLE] [KEEPALIVE_TIMER_STARTED] Temporizador de supervisión activo (tick cada 1000 ms, umbral refresh 2200 ms).',
+    );
+    _keepAliveTimer = Timer.periodic(const Duration(milliseconds: 1000), (
+      _,
+    ) async {
+      _log(
+        '[REstelar:BLE] [KEEPALIVE_TIMER_TICK] Tick de supervisión ejecutado.',
+      );
       if (_currentState.isReadyForNavigation && _writeCharacteristic != null) {
         final now = DateTime.now();
         final lastSent = _lastPacketSentTime;
-        if (lastSent == null ||
-            now.difference(lastSent).inMilliseconds >= 1800) {
+        final msSinceLastTx = lastSent != null
+            ? now.difference(lastSent).inMilliseconds
+            : 999999;
+
+        // Umbral de 2200 ms: garantiza que se envíe un paquete cada 2.2 - 3.2s,
+        // otorgando margen amplio frente al watchdog de 5.0s del Tripper Pod.
+        if (msSinceLastTx >= 2200) {
           if (_activeNavPacket != null) {
-            // MODO PANTALLA ACTIVA (Navegación / Prueba):
-            // El firmware del Tripper Pod cuenta con un watchdog de pantalla de ~5s.
-            // Requiere refresco continuo de tramas CMD_NAVIGATE (0x10 0x11). PING_FW no resetea este watchdog.
+            _log(
+              '[REstelar:BLE] [KEEPALIVE_TX_START] Motivo: Refresco pantalla navegación activa (delta=${msSinceLastTx}ms >= 2200ms)',
+            );
             await _enqueuePacket(
               _activeNavPacket!,
               description:
                   'REFRESH_PANTALLA (${_activeNavDescription ?? "maniobra activa"})',
             );
           } else if (_isNavScreenActive) {
-            // TRANSICIÓN / RESGUARDO DE WATCHDOG:
-            // Si la sesión de navegación sigue activa en el teléfono pero no hay paquete asignado,
-            // PING_FW provocaría que el firmware del Pod cierre el enlace BLE a los 5s (status=19).
-            // Se emite la trama segura de transición neutra (0x1C Re-routing) para mantener vivo el watchdog.
             final fallbackPacket = TripperProtocol.buildSafeTransitionPacket();
             _activeNavPacket = fallbackPacket;
             _activeNavDescription = 'REFRESH_SEGURIDAD_TRANSICION (0x1C)';
+            _log(
+              '[REstelar:BLE] [KEEPALIVE_TX_START] Motivo: Refresco transición 0x1C (delta=${msSinceLastTx}ms >= 2200ms)',
+            );
             await _enqueuePacket(
               fallbackPacket,
               description: 'REFRESH_PANTALLA (seguridad transición 0x1C)',
             );
           } else {
-            // MODO RELOJ NATIVO / REPOSO:
-            // PING_FW (0x03 00...) mantiene el enlace BLE vivo indefinidamente en reposo.
+            _log(
+              '[REstelar:BLE] [KEEPALIVE_TX_START] Motivo: PING_FW reposo (delta=${msSinceLastTx}ms >= 2200ms)',
+            );
             await _enqueuePacket(
               TripperProtocol.packetPingFw,
               description: 'PING_FW (watchdog keepalive reposo)',
             );
           }
+        } else {
+          _log(
+            '[REstelar:BLE] [KEEPALIVE_SKIPPED] Transmisión omitida: delta=${msSinceLastTx}ms < 2200ms | Estado GATT: ${_currentState.name}',
+          );
         }
       }
     });
   }
 
   Future<bool> _enqueuePacket(List<int> bytes, {required String description}) {
+    // Si entra una instrucción de navegación o refresco, purgar de la cola refrescos o paquetes
+    // obsoletos pendientes para evitar retraso acumulativo y contrapresión.
+    final isNavOrRefresh =
+        bytes.length == 20 &&
+        ((bytes[0] == 0x10 && bytes[1] == 0x11) ||
+            (bytes[0] == 0x03 && bytes[1] == 0x00));
+
+    if (isNavOrRefresh) {
+      _packetQueue.removeWhere((queued) {
+        if (queued.description.startsWith('REFRESH_PANTALLA') ||
+            queued.description.startsWith('PING_FW')) {
+          queued.completer.complete(false);
+          return true;
+        }
+        return false;
+      });
+    }
+
     final completer = Completer<bool>();
     _packetQueue.add(
       _QueuedPacket(
@@ -945,6 +982,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
         description: description,
         completer: completer,
       ),
+    );
+    _log(
+      '[REstelar:BLE] [BLE_QUEUE_STATE] Tamaño cola: ${_packetQueue.length} | Encolado: $description',
     );
     _pumpQueue();
     return completer.future;
@@ -954,54 +994,89 @@ class FlutterBluePlusTripperService implements TripperBleService {
     if (_isProcessingQueue) return;
     _isProcessingQueue = true;
 
-    while (_packetQueue.isNotEmpty) {
-      final item = _packetQueue.removeAt(0);
-      final char = _writeCharacteristic;
-      if (char == null) {
-        final msg = 'Fallo de transmisión: No hay característica GATT activa.';
-        _lastTransmissionResult = msg;
-        _log('[TX-ERROR] ${item.description} | $msg');
-        item.completer.complete(false);
-        continue;
-      }
-
-      final hex = TripperProtocol.toHexString(item.bytes);
-      _log('[TX-START] ${item.description} | Trama: $hex');
-      final sw = Stopwatch()..start();
-
-      try {
-        _lastPacketSentHex = hex;
-        final withoutResponse = char.properties.writeWithoutResponse;
-        await char.write(item.bytes, withoutResponse: withoutResponse);
-        sw.stop();
-        _lastPacketSentTime = DateTime.now();
-        if (item.bytes.length == 20 &&
-            item.bytes[0] == 0x10 &&
-            item.bytes[1] == 0x11) {
-          _lastNavPacketSentTime = _lastPacketSentTime;
-          _lastNavPacketSentHex = hex;
-        } else if (item.bytes.length == 20 &&
-            item.bytes[0] == 0x03 &&
-            item.bytes[1] == 0x00) {
-          _lastKeepAliveSentTime = _lastPacketSentTime;
+    try {
+      while (_packetQueue.isNotEmpty) {
+        final item = _packetQueue.removeAt(0);
+        final char = _writeCharacteristic;
+        if (char == null) {
+          final msg =
+              'Fallo de transmisión: No hay característica GATT activa.';
+          _lastTransmissionResult = msg;
+          _log('[REstelar:BLE] [TX-ERROR] ${item.description} | $msg');
+          item.completer.complete(false);
+          continue;
         }
-        _lastTransmissionResult = 'OK (${item.description})';
-        _log(
-          '[TX-COMPLETE] ${item.description} | Resultado: OK | Duración: ${sw.elapsedMilliseconds} ms | Trama: $hex',
-        );
-        item.completer.complete(true);
-      } catch (e) {
-        sw.stop();
-        final errMsg = 'Error al escribir en característica GATT: $e';
-        _lastTransmissionResult = errMsg;
-        _log(
-          '[TX-ERROR] ${item.description} | Resultado: FALLO ($e) | Duración: ${sw.elapsedMilliseconds} ms',
-        );
-        item.completer.complete(false);
-      }
-    }
 
-    _isProcessingQueue = false;
+        final hex = TripperProtocol.toHexString(item.bytes);
+        final isNav =
+            item.bytes.length == 20 &&
+            item.bytes[0] == 0x10 &&
+            item.bytes[1] == 0x11;
+        final isKeepAlive =
+            item.bytes.length == 20 &&
+            item.bytes[0] == 0x03 &&
+            item.bytes[1] == 0x00;
+
+        if (isNav) {
+          _log(
+            '[REstelar:BLE] [NAV_PACKET_TX_START] ${item.description} | Trama: $hex',
+          );
+        } else {
+          _log('[REstelar:BLE] [TX-START] ${item.description} | Trama: $hex');
+        }
+
+        final sw = Stopwatch()..start();
+
+        try {
+          _lastPacketSentHex = hex;
+          final withoutResponse = char.properties.writeWithoutResponse;
+          // Timeout estricto de 2000 ms: previene bloqueo permanente si Android demora el callback
+          await char
+              .write(item.bytes, withoutResponse: withoutResponse)
+              .timeout(const Duration(milliseconds: 2000));
+          sw.stop();
+          _lastPacketSentTime = DateTime.now();
+
+          if (isNav) {
+            _lastNavPacketSentTime = _lastPacketSentTime;
+            _lastNavPacketSentHex = hex;
+            _log(
+              '[REstelar:BLE] [NAV_PACKET_TX_COMPLETE] ${item.description} | Resultado: OK | Duración: ${sw.elapsedMilliseconds} ms | Trama: $hex',
+            );
+          } else if (isKeepAlive) {
+            _lastKeepAliveSentTime = _lastPacketSentTime;
+            _log(
+              '[REstelar:BLE] [KEEPALIVE_TX_COMPLETE] ${item.description} | Resultado: OK | Duración: ${sw.elapsedMilliseconds} ms | Trama: $hex',
+            );
+          } else {
+            _log(
+              '[REstelar:BLE] [TX-COMPLETE] ${item.description} | Resultado: OK | Duración: ${sw.elapsedMilliseconds} ms | Trama: $hex',
+            );
+          }
+          _lastTransmissionResult = 'OK (${item.description})';
+          item.completer.complete(true);
+        } on TimeoutException {
+          sw.stop();
+          final errMsg =
+              'Timeout (2000 ms) en escritura GATT para ${item.description}';
+          _lastTransmissionResult = errMsg;
+          _log('[REstelar:BLE] [KEEPALIVE_TX_ERROR] [TX-TIMEOUT] $errMsg');
+          item.completer.complete(false);
+          // Pausa de seguridad para evitar colisión en el driver Bluetooth nativo
+          await Future.delayed(const Duration(milliseconds: 150));
+        } catch (e) {
+          sw.stop();
+          final errMsg = 'Error al escribir en característica GATT: $e';
+          _lastTransmissionResult = errMsg;
+          _log(
+            '[REstelar:BLE] [KEEPALIVE_TX_ERROR] [TX-ERROR] ${item.description} | Resultado: FALLO ($e) | Duración: ${sw.elapsedMilliseconds} ms',
+          );
+          item.completer.complete(false);
+        }
+      }
+    } finally {
+      _isProcessingQueue = false;
+    }
   }
 
   @override
@@ -1160,6 +1235,12 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
     }
+  }
+
+  void logAppLifecycleState(String lifecycleState) {
+    _log(
+      '[REstelar:LIFECYCLE] [APP_LIFECYCLE_STATE] Estado: $lifecycleState | GATT: ${_currentState.name} | Cola: ${_packetQueue.length}',
+    );
   }
 
   @override
