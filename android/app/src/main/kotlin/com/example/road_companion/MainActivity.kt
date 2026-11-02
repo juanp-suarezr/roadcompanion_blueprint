@@ -78,6 +78,14 @@ class MainActivity : FlutterActivity() {
                 "isTripperGattServerRunning" -> {
                     result.success(TripperGattServerManager.isServerRunning())
                 }
+                "getAppBuildInfo" -> {
+                    result.success(
+                        mapOf(
+                            "buildTimestamp" to BuildConfig.BUILD_TIME,
+                            "buildType" to if (BuildConfig.DEBUG) "DEBUG" else "RELEASE"
+                        )
+                    )
+                }
                 else -> {
                     result.notImplemented()
                 }

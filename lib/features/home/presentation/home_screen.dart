@@ -12,6 +12,7 @@ import '../../settings/presentation/settings_screen.dart';
 import '../../itinerary/presentation/screens/quick_navigation_screen.dart';
 import '../../itinerary/presentation/screens/trip_planner_screen.dart';
 import '../../bridge/presentation/screens/bridge_diagnostic_screen.dart';
+import '../../../core/widgets/app_build_info_widget.dart';
 import 'widgets/external_display_banner.dart';
 import 'widgets/ready_to_ride_card.dart';
 
@@ -169,6 +170,8 @@ class HomeScreen extends StatelessWidget {
                     onTap: () =>
                         _navigateTo(context, const BridgeDiagnosticScreen()),
                   ),
+                  const SizedBox(height: 18.0),
+                  const Center(child: AppBuildInfoWidget()),
                   const SizedBox(height: 24.0),
                 ],
               ),

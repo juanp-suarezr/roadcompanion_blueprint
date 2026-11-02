@@ -4,6 +4,7 @@ import '../../../app/state/app_settings_state.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_typography.dart';
 import '../../../core/widgets/estela_logo.dart';
+import '../../../core/widgets/app_build_info_widget.dart';
 import '../../../core/widgets/storm_badge.dart';
 
 import '../../../features/navigation/domain/services/navigation_source.dart';
@@ -627,6 +628,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 color: AppColors.secondaryTextLight,
                                 fontWeight: FontWeight.w600,
                               ),
+                            ),
+                            SizedBox(height: 3.0),
+                            AppBuildInfoWidget(
+                              textAlign: TextAlign.start,
+                              fontSize: 10.5,
                             ),
                           ],
                         ),
