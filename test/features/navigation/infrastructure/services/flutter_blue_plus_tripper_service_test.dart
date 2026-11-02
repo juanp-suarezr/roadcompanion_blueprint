@@ -159,40 +159,59 @@ void main() {
         final service = FlutterBluePlusTripperService();
         final initialEpoch = service.gattSessionEpoch;
 
-        // 1. Sesión 1: Escritura nativa en vuelo y posterior timeout que marca el canal comprometido
+        // 1. Sesión GATT A: inicia escritura, procesa cola, timeout marca canal comprometido
         service.setNativeWriteInFlightForTesting(true);
+        service.setIsProcessingQueueForTesting(true);
         service.setGattCompromisedForTesting(true);
         expect(service.isNativeWriteInFlight, isTrue);
+        expect(service.isProcessingQueue, isTrue);
         expect(service.isGattBusyOrCompromised, isTrue);
 
-        // 2. Se desconecta el dispositivo: epoch avanza y banderas se limpian
+        // 2. Se desconecta la sesión A: epoch avanza y todas las banderas se limpian
         service.simulateDisconnectForTesting();
         final disconnectedEpoch = service.gattSessionEpoch;
         expect(disconnectedEpoch, greaterThan(initialEpoch));
         expect(service.isNativeWriteInFlight, isFalse);
+        expect(service.isProcessingQueue, isFalse);
         expect(service.isGattBusyOrCompromised, isFalse);
 
-        // 3. Se simula una nueva conexión activa (nueva sesión GATT con nuevo epoch)
+        // 3. Se inicia la sesión GATT B (nuevo epoch, indicadores limpios)
         service
-            .simulateDisconnectForTesting(); // Simula cambio de sesión a nueva conexión
+            .simulateDisconnectForTesting(); // Simula inicio de nueva conexión activa
         final newSessionEpoch = service.gattSessionEpoch;
         expect(newSessionEpoch, greaterThan(disconnectedEpoch));
+        expect(service.isNativeWriteInFlight, isFalse);
+        expect(service.isProcessingQueue, isFalse);
+        expect(service.isGattBusyOrCompromised, isFalse);
 
-        // 4. En la nueva sesión se inicia una nueva escritura nativa
+        // 4. En la sesión B se inicia una escritura activa
         service.setNativeWriteInFlightForTesting(true);
+        service.setIsProcessingQueueForTesting(true);
         expect(service.isNativeWriteInFlight, isTrue);
+        expect(service.isProcessingQueue, isTrue);
 
-        // 5. La escritura de la sesión antigua (initialEpoch) termina tardíamente
+        // 5. Llega tardíamente el callback de la sesión A
         service.simulateLateNativeCallbackForTesting(initialEpoch);
 
-        // 6. Verificación estricta: el callback antiguo no altera la bandera de la sesión actual
-        expect(service.isNativeWriteInFlight, isTrue);
+        // 6. Verificación estricta: el callback de A no altera ningún estado de la sesión B
+        expect(
+          service.isNativeWriteInFlight,
+          isTrue,
+        ); // No libera indebidamente el bloqueo de B
+        expect(
+          service.isProcessingQueue,
+          isTrue,
+        ); // La cola de B sigue en procesamiento
+        expect(
+          service.isGattBusyOrCompromised,
+          isFalse,
+        ); // No contamina el estado del canal de B
         expect(
           service.diagnosticLogs.any((l) => l.contains('[SESSION-GUARD]')),
           isTrue,
         );
 
-        // 7. Cuando el callback de la sesión actual sí termina, se libera correctamente
+        // 7. Cuando el callback legítimo de la sesión B termina, se libera correctamente
         service.simulateLateNativeCallbackForTesting(newSessionEpoch);
         expect(service.isNativeWriteInFlight, isFalse);
       },

@@ -1534,6 +1534,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
   }
 
   @visibleForTesting
+  bool get isProcessingQueue => _isProcessingQueue;
+
+  @visibleForTesting
+  void setIsProcessingQueueForTesting(bool value) {
+    _isProcessingQueue = value;
+  }
+
+  @visibleForTesting
   void simulateDisconnectForTesting() {
     _gattSessionEpoch++;
     _isNativeWriteInFlight = false;
