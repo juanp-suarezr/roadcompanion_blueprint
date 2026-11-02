@@ -70,6 +70,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
   bool _isProcessingQueue = false;
   bool _isNativeWriteInFlight = false;
   bool _isGattBusyOrCompromised = false;
+  int _gattSessionEpoch = 0;
   Uint8List? _activeNavPacket;
   String? _activeNavDescription;
   bool _isNavScreenActive = false;
@@ -522,6 +523,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
     _isConnecting = true;
     _isCancelRequested = false;
+    _gattSessionEpoch++;
     _isNativeWriteInFlight = false;
     _isGattBusyOrCompromised = false;
     final stopwatch = Stopwatch()..start();
@@ -621,6 +623,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
           _activeNavDescription = null;
           _isNavScreenActive = false;
           _isTestManeuverActive = false;
+          _gattSessionEpoch++;
           _isNativeWriteInFlight = false;
           _isGattBusyOrCompromised = false;
           _clearQueue(reason: 'Desconexión de enlace BLE');
@@ -850,6 +853,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _probeRetentionTimer = null;
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
+      _gattSessionEpoch++;
       _isNativeWriteInFlight = false;
       _isGattBusyOrCompromised = false;
       _writeCharacteristic = null;
@@ -1020,6 +1024,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
     try {
       while (_packetQueue.isNotEmpty) {
+        final currentEpoch = _gattSessionEpoch;
+
         if (_isGattBusyOrCompromised) {
           _clearQueue(
             reason:
@@ -1069,16 +1075,26 @@ class FlutterBluePlusTripperService implements TripperBleService {
           );
           writeFuture
               .then((_) {
-                _isNativeWriteInFlight = false;
+                if (_gattSessionEpoch == currentEpoch) {
+                  _isNativeWriteInFlight = false;
+                } else {
+                  _log(
+                    '[REstelar:BLE] [SESSION-GUARD] Callback nativo tardío de sesión previa (epoch $currentEpoch vs actual $_gattSessionEpoch) ignorado.',
+                  );
+                }
               })
               .catchError((_) {
-                _isNativeWriteInFlight = false;
+                if (_gattSessionEpoch == currentEpoch) {
+                  _isNativeWriteInFlight = false;
+                }
               });
 
           // Timeout estricto de 2000 ms: previene bloqueo permanente si Android demora el callback
           await writeFuture.timeout(const Duration(milliseconds: 2000));
           sw.stop();
-          _isNativeWriteInFlight = false;
+          if (_gattSessionEpoch == currentEpoch) {
+            _isNativeWriteInFlight = false;
+          }
           _lastPacketSentTime = DateTime.now();
 
           if (isNav) {
@@ -1107,10 +1123,10 @@ class FlutterBluePlusTripperService implements TripperBleService {
           _log('[REstelar:BLE] [KEEPALIVE_TX_ERROR] [TX-TIMEOUT] $errMsg');
           item.completer.complete(false);
 
-          if (_isNativeWriteInFlight) {
+          if (_gattSessionEpoch == currentEpoch && _isNativeWriteInFlight) {
             _isGattBusyOrCompromised = true;
             _log(
-              '[REstelar:BLE] [GATT-RECOVERY] Se detectó escritura nativa en vuelo tras timeout. '
+              '[REstelar:BLE] [GATT-RECOVERY] Se detectó escritura nativa en vuelo tras timeout en epoch $currentEpoch. '
               'Canal GATT marcado como comprometido para evitar colisión de concurrencia nativa.',
             );
             _clearQueue(
@@ -1122,7 +1138,9 @@ class FlutterBluePlusTripperService implements TripperBleService {
           await Future.delayed(const Duration(milliseconds: 150));
         } catch (e) {
           sw.stop();
-          _isNativeWriteInFlight = false;
+          if (_gattSessionEpoch == currentEpoch) {
+            _isNativeWriteInFlight = false;
+          }
           final errMsg = 'Error al escribir en característica GATT: $e';
           _lastTransmissionResult = errMsg;
           _log(
@@ -1393,6 +1411,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _activeNavPacket = null;
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
+      _gattSessionEpoch++;
       _isNativeWriteInFlight = false;
       _isGattBusyOrCompromised = false;
       _clearQueue(reason: 'Desconexión manual solicitada');
@@ -1417,6 +1436,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _activeNavPacket = null;
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
+      _gattSessionEpoch++;
       _isNativeWriteInFlight = false;
       _isGattBusyOrCompromised = false;
       _clearQueue(reason: 'Desconexión manual con error');
@@ -1501,8 +1521,35 @@ class FlutterBluePlusTripperService implements TripperBleService {
   bool get isGattBusyOrCompromised => _isGattBusyOrCompromised;
 
   @visibleForTesting
+  int get gattSessionEpoch => _gattSessionEpoch;
+
+  @visibleForTesting
   void setGattCompromisedForTesting(bool value) {
     _isGattBusyOrCompromised = value;
+  }
+
+  @visibleForTesting
+  void setNativeWriteInFlightForTesting(bool inFlight) {
+    _isNativeWriteInFlight = inFlight;
+  }
+
+  @visibleForTesting
+  void simulateDisconnectForTesting() {
+    _gattSessionEpoch++;
+    _isNativeWriteInFlight = false;
+    _isGattBusyOrCompromised = false;
+    _clearQueue(reason: 'Simulación de desconexión en pruebas');
+  }
+
+  @visibleForTesting
+  void simulateLateNativeCallbackForTesting(int callbackEpoch) {
+    if (_gattSessionEpoch == callbackEpoch) {
+      _isNativeWriteInFlight = false;
+    } else {
+      _log(
+        '[REstelar:BLE] [SESSION-GUARD] Callback nativo tardío de sesión previa (epoch $callbackEpoch vs actual $_gattSessionEpoch) ignorado.',
+      );
+    }
   }
 }
 

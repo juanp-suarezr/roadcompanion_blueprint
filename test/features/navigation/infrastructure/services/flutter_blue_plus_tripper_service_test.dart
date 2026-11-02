@@ -152,5 +152,50 @@ void main() {
         expect(service.isNativeWriteInFlight, isFalse);
       },
     );
+
+    test(
+      'Aislamiento de sesiones GATT: callback nativo tardío de sesión anterior es ignorado por session guard',
+      () async {
+        final service = FlutterBluePlusTripperService();
+        final initialEpoch = service.gattSessionEpoch;
+
+        // 1. Sesión 1: Escritura nativa en vuelo y posterior timeout que marca el canal comprometido
+        service.setNativeWriteInFlightForTesting(true);
+        service.setGattCompromisedForTesting(true);
+        expect(service.isNativeWriteInFlight, isTrue);
+        expect(service.isGattBusyOrCompromised, isTrue);
+
+        // 2. Se desconecta el dispositivo: epoch avanza y banderas se limpian
+        service.simulateDisconnectForTesting();
+        final disconnectedEpoch = service.gattSessionEpoch;
+        expect(disconnectedEpoch, greaterThan(initialEpoch));
+        expect(service.isNativeWriteInFlight, isFalse);
+        expect(service.isGattBusyOrCompromised, isFalse);
+
+        // 3. Se simula una nueva conexión activa (nueva sesión GATT con nuevo epoch)
+        service
+            .simulateDisconnectForTesting(); // Simula cambio de sesión a nueva conexión
+        final newSessionEpoch = service.gattSessionEpoch;
+        expect(newSessionEpoch, greaterThan(disconnectedEpoch));
+
+        // 4. En la nueva sesión se inicia una nueva escritura nativa
+        service.setNativeWriteInFlightForTesting(true);
+        expect(service.isNativeWriteInFlight, isTrue);
+
+        // 5. La escritura de la sesión antigua (initialEpoch) termina tardíamente
+        service.simulateLateNativeCallbackForTesting(initialEpoch);
+
+        // 6. Verificación estricta: el callback antiguo no altera la bandera de la sesión actual
+        expect(service.isNativeWriteInFlight, isTrue);
+        expect(
+          service.diagnosticLogs.any((l) => l.contains('[SESSION-GUARD]')),
+          isTrue,
+        );
+
+        // 7. Cuando el callback de la sesión actual sí termina, se libera correctamente
+        service.simulateLateNativeCallbackForTesting(newSessionEpoch);
+        expect(service.isNativeWriteInFlight, isFalse);
+      },
+    );
   });
 }
