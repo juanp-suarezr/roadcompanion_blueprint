@@ -617,8 +617,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
           _activeNavDescription = null;
           _isNavScreenActive = false;
           _isTestManeuverActive = false;
-          _packetQueue.clear();
-          _isProcessingQueue = false;
+          _clearQueue(reason: 'Desconexión de enlace BLE');
           _discoveredGattServices.clear();
           _gattServicesController.add(const []);
           _currentConnectionPhase = 'desconectado';
@@ -990,6 +989,23 @@ class FlutterBluePlusTripperService implements TripperBleService {
     return completer.future;
   }
 
+  void _clearQueue({required String reason}) {
+    int cancelledCount = 0;
+    for (final item in _packetQueue) {
+      if (!item.completer.isCompleted) {
+        item.completer.complete(false);
+        cancelledCount++;
+      }
+    }
+    _packetQueue.clear();
+    _isProcessingQueue = false;
+    if (cancelledCount > 0) {
+      _log(
+        '[REstelar:BLE] [BLE_QUEUE_PURGE] Cola vaciada ($reason): $cancelledCount paquetes cancelados.',
+      );
+    }
+  }
+
   Future<void> _pumpQueue() async {
     if (_isProcessingQueue) return;
     _isProcessingQueue = true;
@@ -1336,8 +1352,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _activeNavPacket = null;
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
-      _packetQueue.clear();
-      _isProcessingQueue = false;
+      _clearQueue(reason: 'Desconexión manual solicitada');
       _writeCharacteristic = null;
       await _activeBleDevice?.disconnect();
       await _deviceStateSubscription?.cancel();
@@ -1359,8 +1374,7 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _activeNavPacket = null;
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
-      _packetQueue.clear();
-      _isProcessingQueue = false;
+      _clearQueue(reason: 'Desconexión manual con error');
       _writeCharacteristic = null;
       _connectedSince = null;
       _discoveredGattServices.clear();

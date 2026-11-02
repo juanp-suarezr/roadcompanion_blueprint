@@ -162,14 +162,33 @@ class NominatimGeocodingService implements GeocodingService {
           )
           .timeout(_requestTimeout);
 
-      if (response.statusCode == 429) {
-        throw HttpException(
-          'Límite de solicitudes excedido en el proveedor de búsqueda (HTTP 429). Reintenta en unos segundos.',
-          uri: uri,
-        );
-      }
-
       if (response.statusCode != 200) {
+        // Fallback resiliente: Si Nominatim tiene sobrecarga (429) o error de servidor (5xx),
+        // consultar inmediatamente el motor Photon (Komoot)
+        try {
+          final photonResults = await _queryPhotonFallback(
+            cleanQuery,
+            limit: limit,
+            proximityHint: proximityHint,
+          );
+          if (photonResults.isNotEmpty) {
+            NavigationDiagnosticLogger.logSearchResults(
+              query: cleanQuery,
+              rawResultsCount: 0,
+              results: photonResults,
+              userLocation: proximityHint,
+            );
+            return photonResults;
+          }
+        } catch (_) {}
+
+        if (response.statusCode == 429) {
+          throw HttpException(
+            'Límite de solicitudes excedido en el proveedor de búsqueda (HTTP 429). Reintenta en unos segundos.',
+            uri: uri,
+          );
+        }
+
         throw HttpException(
           'El proveedor de búsqueda respondió con código HTTP ${response.statusCode}',
           uri: uri,
@@ -232,7 +251,29 @@ class NominatimGeocodingService implements GeocodingService {
       );
 
       return results;
+    } on SocketException {
+      try {
+        final photonResults = await _queryPhotonFallback(
+          cleanQuery,
+          limit: limit,
+          proximityHint: proximityHint,
+        );
+        if (photonResults.isNotEmpty) {
+          return photonResults;
+        }
+      } catch (_) {}
+      rethrow;
     } on TimeoutException {
+      try {
+        final photonResults = await _queryPhotonFallback(
+          cleanQuery,
+          limit: limit,
+          proximityHint: proximityHint,
+        );
+        if (photonResults.isNotEmpty) {
+          return photonResults;
+        }
+      } catch (_) {}
       throw const SocketException(
         'Tiempo de espera agotado al conectar con el servidor de búsqueda.',
       );

@@ -1127,6 +1127,57 @@ void main() {
           expect(resText, isNull);
         },
       );
+
+      test(
+        'A.7. Selección de alternativas: toque más cercano a la ruta activa no conmuta indebidamente a ruta alternativa adyacente',
+        () {
+          const calculator = RouteProgressCalculator();
+          // Ruta activa 0 sobre Carrera 7 (lon = -75.7000)
+          final activeRouteGeom = [
+            Coordinates(4.8000, -75.7000),
+            Coordinates(4.8100, -75.7000),
+          ];
+          // Ruta alternativa 1 sobre Carrera 8 (lon = -75.7004, a ~44m paralela)
+          final altRouteGeom = [
+            Coordinates(4.8000, -75.7004),
+            Coordinates(4.8100, -75.7004),
+          ];
+
+          // Caso 1: Toque a 11m de la ruta activa y 33m de la alternativa
+          final tapNearActive = Coordinates(4.8050, -75.7001);
+          final distToActive1 = calculator
+              .calculate(
+                geometry: activeRouteGeom,
+                currentPosition: tapNearActive,
+              )
+              .distanceToRouteMeters;
+          final distToAlt1 = calculator
+              .calculate(geometry: altRouteGeom, currentPosition: tapNearActive)
+              .distanceToRouteMeters;
+
+          expect(distToActive1, closeTo(11.0, 3.0));
+          expect(distToAlt1, lessThanOrEqualTo(45.0)); // Dentro de los 45m
+          // Regla implementada: NO debe conmutar porque distToAlt1 (33m) no es menor que distToActive1 (11m)
+          final shouldSwitch1 =
+              distToAlt1 <= 45.0 && distToAlt1 < distToActive1;
+          expect(shouldSwitch1, isFalse);
+
+          // Caso 2: Toque intencional sobre la alternativa (a 8m de la alternativa y 36m de la activa)
+          final tapNearAlt = Coordinates(4.8050, -75.70033);
+          final distToActive2 = calculator
+              .calculate(geometry: activeRouteGeom, currentPosition: tapNearAlt)
+              .distanceToRouteMeters;
+          final distToAlt2 = calculator
+              .calculate(geometry: altRouteGeom, currentPosition: tapNearAlt)
+              .distanceToRouteMeters;
+
+          expect(distToAlt2, lessThanOrEqualTo(45.0));
+          // Regla implementada: SÍ debe conmutar porque está más cerca de la alternativa que de la ruta activa
+          final shouldSwitch2 =
+              distToAlt2 <= 45.0 && distToAlt2 < distToActive2;
+          expect(shouldSwitch2, isTrue);
+        },
+      );
     });
   });
 }

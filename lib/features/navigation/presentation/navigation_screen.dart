@@ -526,6 +526,16 @@ class NavigationScreenState extends State<NavigationScreen>
       int tappedAlternativeIndex = -1;
       double closestDistance = double.infinity;
 
+      final currentGeom = _availableRoutes[_selectedRouteIndex].geometry;
+      double currentRouteDist = double.infinity;
+      if (currentGeom.length >= 2) {
+        try {
+          currentRouteDist = calculator
+              .calculate(geometry: currentGeom, currentPosition: coords)
+              .distanceToRouteMeters;
+        } catch (_) {}
+      }
+
       for (int i = 0; i < _availableRoutes.length; i++) {
         if (i == _selectedRouteIndex) continue;
         final geom = _availableRoutes[i].geometry;
@@ -536,6 +546,7 @@ class NavigationScreenState extends State<NavigationScreen>
             currentPosition: coords,
           );
           if (progress.distanceToRouteMeters <= 45.0 &&
+              progress.distanceToRouteMeters < currentRouteDist &&
               progress.distanceToRouteMeters < closestDistance) {
             closestDistance = progress.distanceToRouteMeters;
             tappedAlternativeIndex = i;

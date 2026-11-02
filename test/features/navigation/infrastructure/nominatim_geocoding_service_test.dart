@@ -545,6 +545,54 @@ void main() {
         expect(capturedQueries.last, equals('Carrera 23, Manizales'));
         expect(fallbackResults.length, equals(1));
         expect(fallbackResults.first.title, equals('Carrera 23'));
+
+        // Caso D: Nominatim falla con HTTP 500, pero Photon resuelve exitosamente el destino rural
+        final resilientClient = MockClient((request) async {
+          if (request.url.host == 'nominatim.openstreetmap.org') {
+            return http.Response('Internal Server Error', 500);
+          }
+          if (request.url.host == 'photon.komoot.io') {
+            return http.Response(
+              jsonEncode({
+                'features': [
+                  {
+                    'properties': {
+                      'osm_id': 9999,
+                      'name': 'Vereda El Rosario',
+                      'city': 'Manizales',
+                      'state': 'Caldas',
+                      'country': 'Colombia',
+                      'countrycode': 'CO',
+                      'osm_value': 'hamlet',
+                    },
+                    'geometry': {
+                      'coordinates': [-75.5000, 5.0800],
+                    },
+                  },
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response('Not Found', 404);
+        });
+        final resilientService = NominatimGeocodingService(
+          client: resilientClient,
+        );
+        final resilientResults = await resilientService.search(
+          'Vereda El Rosario',
+        );
+        expect(resilientResults.length, equals(1));
+        expect(resilientResults.first.title, equals('Vereda El Rosario'));
+        expect(
+          resilientResults.first.coordinates.latitude,
+          closeTo(5.0800, 0.0001),
+        );
+        expect(
+          resilientResults.first.coordinates.longitude,
+          closeTo(-75.5000, 0.0001),
+        );
       },
     );
   });
