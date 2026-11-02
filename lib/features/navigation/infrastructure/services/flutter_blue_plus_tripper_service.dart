@@ -68,6 +68,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
   final List<_QueuedPacket> _packetQueue = [];
   bool _isProcessingQueue = false;
+  bool _isNativeWriteInFlight = false;
+  bool _isGattBusyOrCompromised = false;
   Uint8List? _activeNavPacket;
   String? _activeNavDescription;
   bool _isNavScreenActive = false;
@@ -520,6 +522,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
     _isConnecting = true;
     _isCancelRequested = false;
+    _isNativeWriteInFlight = false;
+    _isGattBusyOrCompromised = false;
     final stopwatch = Stopwatch()..start();
 
     final nowIso = DateTime.now().toIso8601String();
@@ -617,6 +621,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
           _activeNavDescription = null;
           _isNavScreenActive = false;
           _isTestManeuverActive = false;
+          _isNativeWriteInFlight = false;
+          _isGattBusyOrCompromised = false;
           _clearQueue(reason: 'Desconexión de enlace BLE');
           _discoveredGattServices.clear();
           _gattServicesController.add(const []);
@@ -844,6 +850,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _probeRetentionTimer = null;
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
+      _isNativeWriteInFlight = false;
+      _isGattBusyOrCompromised = false;
       _writeCharacteristic = null;
       _currentConnectionPhase = 'error';
       _setState(TripperConnectionState.error);
@@ -1012,6 +1020,14 @@ class FlutterBluePlusTripperService implements TripperBleService {
 
     try {
       while (_packetQueue.isNotEmpty) {
+        if (_isGattBusyOrCompromised) {
+          _clearQueue(
+            reason:
+                'Canal GATT comprometido o bloqueado por timeout nativo previo',
+          );
+          break;
+        }
+
         final item = _packetQueue.removeAt(0);
         final char = _writeCharacteristic;
         if (char == null) {
@@ -1046,11 +1062,23 @@ class FlutterBluePlusTripperService implements TripperBleService {
         try {
           _lastPacketSentHex = hex;
           final withoutResponse = char.properties.writeWithoutResponse;
+          _isNativeWriteInFlight = true;
+          final writeFuture = char.write(
+            item.bytes,
+            withoutResponse: withoutResponse,
+          );
+          writeFuture
+              .then((_) {
+                _isNativeWriteInFlight = false;
+              })
+              .catchError((_) {
+                _isNativeWriteInFlight = false;
+              });
+
           // Timeout estricto de 2000 ms: previene bloqueo permanente si Android demora el callback
-          await char
-              .write(item.bytes, withoutResponse: withoutResponse)
-              .timeout(const Duration(milliseconds: 2000));
+          await writeFuture.timeout(const Duration(milliseconds: 2000));
           sw.stop();
+          _isNativeWriteInFlight = false;
           _lastPacketSentTime = DateTime.now();
 
           if (isNav) {
@@ -1074,14 +1102,27 @@ class FlutterBluePlusTripperService implements TripperBleService {
         } on TimeoutException {
           sw.stop();
           final errMsg =
-              'Timeout (2000 ms) en escritura GATT para ${item.description}';
+              'Timeout (2000 ms) en escritura GATT para ${item.description} (operación nativa en vuelo: $_isNativeWriteInFlight)';
           _lastTransmissionResult = errMsg;
           _log('[REstelar:BLE] [KEEPALIVE_TX_ERROR] [TX-TIMEOUT] $errMsg');
           item.completer.complete(false);
+
+          if (_isNativeWriteInFlight) {
+            _isGattBusyOrCompromised = true;
+            _log(
+              '[REstelar:BLE] [GATT-RECOVERY] Se detectó escritura nativa en vuelo tras timeout. '
+              'Canal GATT marcado como comprometido para evitar colisión de concurrencia nativa.',
+            );
+            _clearQueue(
+              reason: 'Escritura nativa en vuelo bloqueada en stack Android',
+            );
+            break;
+          }
           // Pausa de seguridad para evitar colisión en el driver Bluetooth nativo
           await Future.delayed(const Duration(milliseconds: 150));
         } catch (e) {
           sw.stop();
+          _isNativeWriteInFlight = false;
           final errMsg = 'Error al escribir en característica GATT: $e';
           _lastTransmissionResult = errMsg;
           _log(
@@ -1352,6 +1393,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _activeNavPacket = null;
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
+      _isNativeWriteInFlight = false;
+      _isGattBusyOrCompromised = false;
       _clearQueue(reason: 'Desconexión manual solicitada');
       _writeCharacteristic = null;
       await _activeBleDevice?.disconnect();
@@ -1374,6 +1417,8 @@ class FlutterBluePlusTripperService implements TripperBleService {
       _activeNavPacket = null;
       _isNavScreenActive = false;
       _isTestManeuverActive = false;
+      _isNativeWriteInFlight = false;
+      _isGattBusyOrCompromised = false;
       _clearQueue(reason: 'Desconexión manual con error');
       _writeCharacteristic = null;
       _connectedSince = null;
@@ -1447,6 +1492,17 @@ class FlutterBluePlusTripperService implements TripperBleService {
     }
     buffer.writeln('=== FIN DEL INFORME ===');
     return buffer.toString();
+  }
+
+  @visibleForTesting
+  bool get isNativeWriteInFlight => _isNativeWriteInFlight;
+
+  @visibleForTesting
+  bool get isGattBusyOrCompromised => _isGattBusyOrCompromised;
+
+  @visibleForTesting
+  void setGattCompromisedForTesting(bool value) {
+    _isGattBusyOrCompromised = value;
   }
 }
 

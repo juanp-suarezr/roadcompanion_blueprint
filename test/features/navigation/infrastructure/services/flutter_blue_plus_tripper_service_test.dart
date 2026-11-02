@@ -136,5 +136,21 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+      'Banderas de concurrencia nativa inician en false y se limpian al desconectar',
+      () async {
+        final service = FlutterBluePlusTripperService();
+        expect(service.isNativeWriteInFlight, isFalse);
+        expect(service.isGattBusyOrCompromised, isFalse);
+
+        service.setGattCompromisedForTesting(true);
+        expect(service.isGattBusyOrCompromised, isTrue);
+
+        await service.disconnect();
+        expect(service.isGattBusyOrCompromised, isFalse);
+        expect(service.isNativeWriteInFlight, isFalse);
+      },
+    );
   });
 }
