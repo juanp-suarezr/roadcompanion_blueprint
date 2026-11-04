@@ -13,6 +13,7 @@ import 'package:road_companion/features/navigation/domain/entities/navigation_se
 import 'package:road_companion/features/navigation/domain/repositories/session_repository.dart';
 import 'package:road_companion/features/navigation/domain/services/geocoding_service.dart';
 import 'package:road_companion/features/navigation/domain/services/location_service.dart';
+import 'package:road_companion/features/navigation/infrastructure/services/internal_navigation_session_manager.dart';
 import 'package:road_companion/features/navigation/domain/services/route_integrity_validator.dart';
 import 'package:road_companion/features/navigation/domain/services/routing_service.dart';
 import 'package:road_companion/features/navigation/presentation/navigation_screen.dart';
@@ -195,6 +196,8 @@ void main() {
   );
 
   setUp(() {
+    addTearDown(InternalNavigationSessionManager.resetForTesting);
+    InternalNavigationSessionManager.resetForTesting();
     mockLocationService = MockMapLocationService();
     mockSessionRepo = MockMapSessionRepo();
     mockGeocodingService = MockGeocodingService([sampleDestination]);
@@ -202,6 +205,7 @@ void main() {
   });
 
   tearDown(() {
+    InternalNavigationSessionManager.resetForTesting();
     mockLocationService.dispose();
   });
 
@@ -416,6 +420,12 @@ void main() {
 
       // Verificar que el HUD activo se encendió
       expect(find.byType(ActiveTurnByTurnHud), findsOneWidget);
+
+      // Detener sesión activa y desmontar widget para liberar timers
+      await InternalNavigationSessionManager.instance.stopSession(
+        notifyHardware: false,
+      );
+      await tester.pumpWidget(const SizedBox());
     },
   );
 
@@ -663,7 +673,10 @@ void main() {
         equals(state.activeRouteVersion),
       );
 
-      // Desmontar widget para liberar timers del tracker activo
+      // Detener sesión activa y desmontar widget para liberar timers del tracker activo
+      await InternalNavigationSessionManager.instance.stopSession(
+        notifyHardware: false,
+      );
       await tester.pumpWidget(const SizedBox());
     },
   );

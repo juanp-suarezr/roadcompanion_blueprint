@@ -15,7 +15,6 @@ import '../../../../domain/services/route_progress_calculator.dart';
 import '../domain/entities/calculated_route.dart';
 import '../domain/entities/destination.dart';
 import '../domain/entities/gps_position.dart';
-import '../domain/entities/imported_gpx_route.dart';
 import '../domain/entities/navigation_issue_report.dart';
 import '../domain/entities/saved_favorite_route.dart';
 import '../domain/repositories/session_repository.dart';
@@ -38,6 +37,7 @@ import '../domain/entities/tripper_maneuver_payload.dart';
 import '../domain/services/tripper_ble_service.dart';
 import '../domain/services/tripper_protocol.dart';
 import '../infrastructure/services/flutter_blue_plus_tripper_service.dart';
+import '../infrastructure/services/internal_navigation_session_manager.dart';
 import 'screens/tripper_diagnostic_screen.dart';
 import 'demo_navigation_controller.dart';
 import 'state/gpx_route_tracker.dart';
@@ -234,9 +234,57 @@ class NavigationScreenState extends State<NavigationScreen>
 
     _voiceService.init();
     _initGpsListener();
+
+    final session = InternalNavigationSessionManager.instance;
+    if (session.isNavigating) {
+      _isNavigatingCalculatedRoute = true;
+      _calculatedRoute = session.activeRoute;
+      _selectedDestination = session.activeDestination;
+      _activeTracker = session.activeTracker;
+      _currentCurvatureInfo = session.currentCurvatureInfo;
+      _activeRouteVersion = session.activeRouteVersion;
+      if (session.lastGpsPosition != null) {
+        _currentRiderCoordinates = session.lastGpsPosition!.coordinates;
+        _riderHeading = session.riderHeading;
+        _accuracyMeters = session.accuracyMeters;
+      }
+      _activeTracker?.addListener(_onActiveTrackerProgress);
+    }
+    session.addListener(_onSessionManagerChanged);
+    session.onOffRouteDetected = (coords) {
+      if (mounted) triggerOffRouteRecalculation(coords);
+    };
+    session.onDestinationReached = () {
+      if (mounted) {
+        setState(() {
+          _isNavigatingCalculatedRoute = false;
+        });
+      }
+    };
+
     _bleStateSubscription = _tripperBleService.stateStream.listen((state) {
       if (!mounted) return;
       _onBleStateChanged(state);
+    });
+  }
+
+  void _onSessionManagerChanged() {
+    if (!mounted) return;
+    final session = InternalNavigationSessionManager.instance;
+    setState(() {
+      _isNavigatingCalculatedRoute = session.isNavigating;
+      if (session.isNavigating) {
+        _calculatedRoute = session.activeRoute;
+        _selectedDestination = session.activeDestination;
+        _activeTracker = session.activeTracker;
+        _currentCurvatureInfo = session.currentCurvatureInfo;
+        _activeRouteVersion = session.activeRouteVersion;
+        if (session.lastGpsPosition != null) {
+          _currentRiderCoordinates = session.lastGpsPosition!.coordinates;
+          _riderHeading = session.riderHeading;
+          _accuracyMeters = session.accuracyMeters;
+        }
+      }
     });
   }
 
@@ -312,8 +360,11 @@ class NavigationScreenState extends State<NavigationScreen>
 
       final selectedSource =
           AppSettingsScope.maybeOf(context)?.selectedNavigationSource ??
-          SelectedNavigationSourceType.internal;
-      if (selectedSource == SelectedNavigationSourceType.internal) {
+          SelectedNavigationSourceType.auto;
+      final isAllowedSource =
+          selectedSource == SelectedNavigationSourceType.internal ||
+          selectedSource == SelectedNavigationSourceType.auto;
+      if (isAllowedSource) {
         final step = _resolveCurrentManeuverStep();
         if (step != null) {
           final opcode = TripperProtocol.mapManeuverToTripperCode(
@@ -341,6 +392,9 @@ class NavigationScreenState extends State<NavigationScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    InternalNavigationSessionManager.instance.removeListener(
+      _onSessionManagerChanged,
+    );
     _activeTracker?.removeListener(_onActiveTrackerProgress);
     _voiceService.dispose();
     if (_ownsSimulatorService) {
@@ -349,7 +403,9 @@ class NavigationScreenState extends State<NavigationScreen>
     _gpsLocationSubscription?.cancel();
     _bleStateSubscription?.cancel();
     _demoController.dispose();
-    _activeTracker?.dispose();
+    if (!InternalNavigationSessionManager.instance.isNavigating) {
+      _activeTracker?.dispose();
+    }
     _localRouteState?.dispose();
     _mapController.dispose();
     super.dispose();
@@ -823,8 +879,11 @@ class NavigationScreenState extends State<NavigationScreen>
         // aislamiento de fuente seleccionada y sin enviar instrucciones ficticias cuando el tipo es unknown.
         final selectedSource =
             AppSettingsScope.maybeOf(context)?.selectedNavigationSource ??
-            SelectedNavigationSourceType.internal;
-        if (selectedSource == SelectedNavigationSourceType.internal &&
+            SelectedNavigationSourceType.auto;
+        final isAllowedSource =
+            selectedSource == SelectedNavigationSourceType.internal ||
+            selectedSource == SelectedNavigationSourceType.auto;
+        if (isAllowedSource &&
             _tripperBleService.currentState.isReadyForNavigation) {
           final opcode = TripperProtocol.mapManeuverToTripperCode(
             effectiveStep.activeManeuver.type,
@@ -951,30 +1010,19 @@ class NavigationScreenState extends State<NavigationScreen>
         routeVersion: _activeRouteVersion,
       );
 
-      final gpxCompatible = ImportedGpxRoute.fromCalculatedRoute(
-        versionedRoute,
-      );
-      final oldTracker = _activeTracker;
-      oldTracker?.removeListener(_onActiveTrackerProgress);
-      await oldTracker?.stopTracking();
-      oldTracker?.dispose();
+      _activeTracker?.removeListener(_onActiveTrackerProgress);
+      await InternalNavigationSessionManager.instance
+          .updateRouteAfterRecalculation(versionedRoute);
 
-      // Re-verificar que no haya sido invalidado durante el await de stopTracking
+      // Re-verificar que no haya sido invalidado durante el await
       if (!mounted ||
           !_isNavigatingCalculatedRoute ||
           requestSeq != _recalculationRequestSeq) {
         return;
       }
 
-      _activeTracker = GpxRouteTracker(
-        route: gpxCompatible,
-        locationService: _locationService,
-        calculator: widget.calculator ?? const RouteProgressCalculator(),
-        sessionRepository: widget.sessionRepository,
-        routeVersion: _activeRouteVersion,
-      );
-      _activeTracker!.addListener(_onActiveTrackerProgress);
-      await _activeTracker!.startTracking();
+      _activeTracker = InternalNavigationSessionManager.instance.activeTracker;
+      _activeTracker?.addListener(_onActiveTrackerProgress);
 
       if (mounted && requestSeq == _recalculationRequestSeq) {
         setState(() {
@@ -1022,38 +1070,42 @@ class NavigationScreenState extends State<NavigationScreen>
     _gpsLocationSubscription?.cancel();
     _gpsLocationSubscription = null;
 
-    final gpxCompatible = ImportedGpxRoute.fromCalculatedRoute(
-      _calculatedRoute!,
-    );
-
-    _activeTracker?.removeListener(_onActiveTrackerProgress);
-    _activeTracker?.dispose();
-    _activeTracker = GpxRouteTracker(
-      route: gpxCompatible,
-      locationService: _locationService,
-      calculator: widget.calculator ?? const RouteProgressCalculator(),
-      sessionRepository: widget.sessionRepository,
-    );
-
-    _maneuverEngine.setRoute(_calculatedRoute!);
-    _voiceService.resetGuidance();
-    _activeTracker!.addListener(_onActiveTrackerProgress);
-
-    final started = await _activeTracker!.startTracking();
+    final started = await InternalNavigationSessionManager.instance
+        .startSession(
+          route: _calculatedRoute!,
+          destination: _selectedDestination,
+          locationService: _locationService,
+          bleService: _tripperBleService,
+          voiceService: _voiceService,
+          selectedSourceProvider: () =>
+              AppSettingsScope.maybeOf(context)?.selectedNavigationSource ??
+              SelectedNavigationSourceType.auto,
+          calculator: widget.calculator ?? const RouteProgressCalculator(),
+          sessionRepository: widget.sessionRepository,
+          curvatureInfo: _currentCurvatureInfo,
+        );
     if (!mounted) return;
 
     if (started) {
+      _activeTracker = InternalNavigationSessionManager.instance.activeTracker;
+      _activeTracker?.addListener(_onActiveTrackerProgress);
       setState(() {
         _isNavigatingCalculatedRoute = true;
       });
-      _voiceService.speak(
-        'Iniciando navegación hacia ${_selectedDestination?.title ?? "tu destino"}.',
-      );
-    } else if (_activeTracker!.permissionError != null) {
+    } else if (InternalNavigationSessionManager
+            .instance
+            .activeTracker
+            ?.permissionError !=
+        null) {
       _startListeningGps();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_activeTracker!.permissionError!),
+          content: Text(
+            InternalNavigationSessionManager
+                .instance
+                .activeTracker!
+                .permissionError!,
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1062,6 +1114,7 @@ class NavigationScreenState extends State<NavigationScreen>
 
   void _cancelCalculatedRoute() {
     _activeTracker?.removeListener(_onActiveTrackerProgress);
+    InternalNavigationSessionManager.instance.stopSession();
     _voiceService.stop();
     _voiceService.resetGuidance();
     _maneuverEngine.clear();
@@ -1069,7 +1122,6 @@ class NavigationScreenState extends State<NavigationScreen>
       reason: 'Ruta interna cancelada por el usuario',
     );
     _tripperBleService.stopNavigation();
-    _activeTracker?.stopTracking();
     _lastBleStepIndex = null;
     _lastBleManeuverType = null;
     _lastBleDistanceMeters = null;
@@ -1134,7 +1186,13 @@ class NavigationScreenState extends State<NavigationScreen>
 
   Future<void> _onStopSession(GpxRouteTracker tracker) async {
     _activeTracker?.removeListener(_onActiveTrackerProgress);
-    await tracker.stopTracking();
+    final savedSession = tracker.lastSavedSession;
+    await InternalNavigationSessionManager.instance.stopSession();
+    if (!tracker.isDisposed &&
+        tracker.status != GpxTrackingStatus.stopped &&
+        tracker.status != GpxTrackingStatus.completed) {
+      await tracker.stopTracking();
+    }
     await _voiceService.stop();
     _voiceService.resetGuidance();
     _maneuverEngine.clear();
@@ -1149,8 +1207,9 @@ class NavigationScreenState extends State<NavigationScreen>
     _startListeningGps();
     if (!mounted) return;
 
-    if (tracker.lastSavedSession != null) {
-      await SessionSummaryDialog.show(context, tracker.lastSavedSession!);
+    final sessionToShow = savedSession ?? tracker.lastSavedSession;
+    if (sessionToShow != null) {
+      await SessionSummaryDialog.show(context, sessionToShow);
     }
     setState(() {
       _isNavigatingCalculatedRoute = false;

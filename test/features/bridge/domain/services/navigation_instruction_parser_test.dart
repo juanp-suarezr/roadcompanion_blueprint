@@ -465,6 +465,54 @@ void main() {
           expect(emptyNotif.discardReason, contains('notification_text_empty'));
         },
       );
+
+      test(
+        'filtra banner de paquete "com.waze" y "Waze" marcándolo como banner genérico (appRunningOnly)',
+        () {
+          final pkgNotif = parser.parseWaze(
+            rawTitle: 'Waze',
+            rawText: 'com.waze',
+            receivedAt: testDate,
+            notificationKey: '0|com.waze|100|null|10234',
+          );
+
+          expect(pkgNotif.isUnrecognized, isTrue);
+          expect(pkgNotif.isAppRunningNotification, isTrue);
+          expect(pkgNotif.status, equals(BridgeInstructionStatus.unrecognized));
+          expect(pkgNotif.discardReason, contains('segundo plano'));
+          expect(pkgNotif.isCompatibleWithTripper, isFalse);
+        },
+      );
+
+      test(
+        'extrae distancias con preposición "a 500 m" y giros inmediatos "gira ahora"',
+        () {
+          final prepDistance = parser.parseWaze(
+            rawTitle: 'a 500 m',
+            rawText: 'Gira a la derecha por Calle 10',
+            receivedAt: testDate,
+          );
+          expect(
+            prepDistance.status,
+            equals(BridgeInstructionStatus.recognized),
+          );
+          expect(prepDistance.distanceMeters, equals(500));
+          expect(prepDistance.maneuverType, equals(ManeuverType.right));
+          expect(prepDistance.destinationStreet, equals('Calle 10'));
+
+          final immediateTurn = parser.parseWaze(
+            rawTitle: 'Gira ahora a la izquierda',
+            rawText: 'Av. Circunvalar',
+            receivedAt: testDate,
+          );
+          expect(
+            immediateTurn.status,
+            equals(BridgeInstructionStatus.recognized),
+          );
+          expect(immediateTurn.distanceMeters, equals(0));
+          expect(immediateTurn.maneuverType, equals(ManeuverType.left));
+        },
+      );
     });
   });
 }

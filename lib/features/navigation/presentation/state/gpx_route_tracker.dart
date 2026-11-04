@@ -94,6 +94,9 @@ class GpxRouteTracker extends ChangeNotifier {
        _sessionRepository = sessionRepository,
        _clock = clock ?? DateTime.now;
 
+  bool _isDisposed = false;
+  bool get isDisposed => _isDisposed;
+
   // Getters de estado
   GpxTrackingStatus get status => _status;
   bool get isTracking =>
@@ -241,6 +244,7 @@ class GpxRouteTracker extends ChangeNotifier {
 
   /// Detiene y finaliza la sesión de navegación, registrando las métricas locales.
   Future<void> stopTracking({bool isCompleted = false}) async {
+    if (_isDisposed) return;
     _cancelSubscriptions();
 
     _status = isCompleted
@@ -518,6 +522,8 @@ class GpxRouteTracker extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_isDisposed) return;
+    _isDisposed = true;
     _cancelSubscriptions();
     super.dispose();
   }

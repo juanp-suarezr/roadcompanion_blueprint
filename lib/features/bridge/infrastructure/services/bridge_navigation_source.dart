@@ -40,9 +40,9 @@ class BridgeNavigationSource {
        _externalEnabled = externalEnabled,
        _arbiter =
            arbiter ??
-           AutoNavigationSourceArbiter(
-             stalenessTimeout: staleDuration ?? const Duration(seconds: 45),
-           );
+           (staleDuration != null
+               ? AutoNavigationSourceArbiter(stalenessTimeout: staleDuration)
+               : AutoNavigationSourceArbiter.instance);
 
   /// Árbitro determinista de concurrencia y selección automática entre Waze y Maps.
   AutoNavigationSourceArbiter get arbiter => _arbiter;

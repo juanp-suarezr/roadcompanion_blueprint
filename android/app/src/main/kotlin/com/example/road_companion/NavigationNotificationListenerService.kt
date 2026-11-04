@@ -38,7 +38,13 @@ class NavigationNotificationListenerService : NotificationListenerService() {
             "android.template",
             "android.reduced.images",
             "android.contains.customView",
-            "androidx.core.app.extra.COMPAT_TEMPLATE"
+            "androidx.core.app.extra.COMPAT_TEMPLATE",
+            "pde_noti_pkg",
+            "pde_noti_app_name",
+            "package",
+            "packageName",
+            "android.support.action",
+            "android.originatingUserId"
         )
 
         // Paquete de navegación seleccionado por el usuario para el viaje actual.
@@ -157,6 +163,7 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         private fun isIrrelevantRemoteViewLabel(text: String?): Boolean {
             if (text.isNullOrBlank()) return true
             val normalized = text.trim().lowercase()
+            if (ALLOWED_PACKAGES.contains(normalized) || normalized.startsWith("com.")) return true
             if (IRRELEVANT_ACTION_LABELS.contains(normalized)) return true
             return isGenericRunningBanner(normalized)
         }
@@ -275,7 +282,8 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         )
         try {
             for (key in extras.keySet()) {
-                if (key == null || standardKeys.contains(key) || IGNORED_EXTRA_KEYS.contains(key)) {
+                if (key == null || standardKeys.contains(key) || IGNORED_EXTRA_KEYS.contains(key) ||
+                    key.contains("pkg", ignoreCase = true) || key.contains("package", ignoreCase = true)) {
                     continue
                 }
                 @Suppress("DEPRECATION")
@@ -284,7 +292,7 @@ class NavigationNotificationListenerService : NotificationListenerService() {
                     val str = rawVal.toString().trim()
                     if (str.isNotEmpty() && !str.startsWith("android.app.Notification")) {
                         presentExtras.add("extra:$key")
-                        if (!isIrrelevantRemoteViewLabel(str)) {
+                        if (!isIrrelevantRemoteViewLabel(str) && !str.equals(packageName, ignoreCase = true)) {
                             customExtraTexts.add(str)
                         }
                     }
@@ -504,12 +512,12 @@ class NavigationNotificationListenerService : NotificationListenerService() {
         if (view == null) return
         if (view is TextView) {
             val value = view.text?.toString()?.trim()
-            if (!value.isNullOrEmpty()) {
+            if (!value.isNullOrEmpty() && !isIrrelevantRemoteViewLabel(value)) {
                 out.add(value)
             }
         }
         val contentDesc = view.contentDescription?.toString()?.trim()
-        if (!contentDesc.isNullOrEmpty() && !out.contains(contentDesc)) {
+        if (!contentDesc.isNullOrEmpty() && !isIrrelevantRemoteViewLabel(contentDesc) && !out.contains(contentDesc)) {
             out.add(contentDesc)
         }
         if (view is ViewGroup) {

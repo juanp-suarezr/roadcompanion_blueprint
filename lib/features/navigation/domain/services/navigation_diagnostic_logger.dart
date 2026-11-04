@@ -52,7 +52,14 @@ enum CorrelatedBridgeTraceStep {
   sourceInstructionExpired('source_instruction_expired'),
   sourceNavigationEnded('source_navigation_ended'),
   sourceFallbackActivated('source_fallback_activated'),
-  sourceNoActiveNavigation('source_no_active_navigation');
+  sourceNoActiveNavigation('source_no_active_navigation'),
+  internalNavStarted('internal_nav_started'),
+  internalGpsReceived('internal_gps_received'),
+  internalProgressUpdated('internal_progress_updated'),
+  internalManeuverGenerated('internal_maneuver_generated'),
+  internalNavEnded('internal_nav_ended'),
+  internalOffRoute('internal_off_route'),
+  internalRecalculationStarted('internal_recalculation_started');
 
   final String code;
   const CorrelatedBridgeTraceStep(this.code);

@@ -13,22 +13,22 @@ class NavigationInstructionParser {
 
   // Expresiones regulares para extracción de métricas de distancia.
   static final RegExp _kmRegex = RegExp(
-    r'(?:en\s+)?(\d+(?:[.,]\d+)?)\s*(?:km|kil[oó]metros?)\b',
+    r'(?:en\s+|a\s+|in\s+)?(\d+(?:[.,]\d+)?)\s*(?:km|kil[oó]metros?)\b',
     caseSensitive: false,
   );
 
   static final RegExp _meterRegex = RegExp(
-    r'(?:en\s+)?(\d+)\s*(?:m|mts?|metros?)\b',
+    r'(?:en\s+|a\s+|in\s+)?(\d+)\s*(?:m|mts?|metros?)\b',
     caseSensitive: false,
   );
 
   static final RegExp _feetRegex = RegExp(
-    r'(?:en\s+)?(\d+)\s*(?:ft|pies?)\b',
+    r'(?:en\s+|a\s+|in\s+)?(\d+)\s*(?:ft|pies?)\b',
     caseSensitive: false,
   );
 
   static final RegExp _milesRegex = RegExp(
-    r'(?:en\s+)?(\d+(?:[.,]\d+)?)\s*(?:mi|millas?)\b',
+    r'(?:en\s+|a\s+|in\s+)?(\d+(?:[.,]\d+)?)\s*(?:mi|millas?)\b',
     caseSensitive: false,
   );
 
@@ -46,8 +46,10 @@ class NavigationInstructionParser {
 
   static const Set<String> _irrelevantRemoteLabels = {
     'waze',
+    'com.waze',
     'google maps',
     'maps',
+    'com.google.android.apps.maps',
     'cerrar',
     'salir',
     'detener',
@@ -181,11 +183,22 @@ class NavigationInstructionParser {
         ? null
         : _extractStreet(title, body, usefulRemoteTexts);
 
-    // Si la maniobra es llegada a destino y no incluye cifra explícita en metros, usar 0 m.
+    final isImmediate =
+        lowerCombined.contains('gira ahora') ||
+        lowerCombined.contains('gire ahora') ||
+        lowerCombined.contains('dobla ahora') ||
+        lowerCombined.contains('turn now') ||
+        lowerCombined.contains('gira ya') ||
+        lowerCombined.contains('dobla ya');
+
+    // Si la maniobra es llegada a destino o giro inmediato y no incluye cifra explícita en metros, usar 0 m.
     final effectiveDistanceMeters = nonManeuverReason != null
         ? null
         : (distanceResult?.meters ??
-              (maneuverType == ManeuverType.arrive ? 0 : null));
+              (maneuverType == ManeuverType.arrive ||
+                      (maneuverType != ManeuverType.unknown && isImmediate)
+                  ? 0
+                  : null));
 
     // 5. Determinar estado de validez de forma determinista y segura.
     final status = nonManeuverReason != null
@@ -593,6 +606,17 @@ class NavigationInstructionParser {
     }
     if (RegExp(r'\bwaze\s*[—\-:]\s*running\b').hasMatch(lower) ||
         lower.trim() == 'running') {
+      return true;
+    }
+    // Detección de notificaciones que únicamente contienen el nombre de la app o su paquete
+    final cleaned = lower.replaceAll(RegExp(r'[\s\-—–:]+'), ' ').trim();
+    if (cleaned == 'waze' ||
+        cleaned == 'com.waze' ||
+        cleaned == 'waze com.waze' ||
+        cleaned == 'google maps' ||
+        cleaned == 'maps' ||
+        cleaned == 'com.google.android.apps.maps' ||
+        cleaned == 'google maps com.google.android.apps.maps') {
       return true;
     }
     return false;

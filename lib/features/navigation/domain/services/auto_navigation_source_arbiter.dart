@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../bridge/domain/entities/bridge_instruction_status.dart';
 import '../../../bridge/domain/entities/bridge_navigation_instruction.dart';
 import '../../../bridge/domain/entities/bridge_source_type.dart';
@@ -112,6 +114,15 @@ class AutoArbitrationResult {
 /// - Desplaza fuentes canceladas hacia fuentes secundarias activas (fallback) o pasa a sin navegación.
 /// - Bloquea interferencias cuando la navegación interna propia de RoadCompanion está activa.
 class AutoNavigationSourceArbiter {
+  static AutoNavigationSourceArbiter? _instance;
+  static AutoNavigationSourceArbiter get instance =>
+      _instance ??= AutoNavigationSourceArbiter();
+
+  @visibleForTesting
+  static void setMockInstance(AutoNavigationSourceArbiter? mock) {
+    _instance = mock;
+  }
+
   final Duration stalenessTimeout;
   final Map<BridgeSourceType, ExternalSourceState> _sources = {
     BridgeSourceType.waze: ExternalSourceState(source: BridgeSourceType.waze),
